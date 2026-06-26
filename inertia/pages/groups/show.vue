@@ -171,41 +171,69 @@ function fmtDuration(value: number | null) {
   return `${minutes}m ${remainingSeconds}d`;
 }
 
+const heroMeta = computed(() => [
+  {
+    label: props.data.groupType,
+    tone: statusBadge(props.data.groupType),
+  },
+  {
+    label: `${fmtNumber(props.data.memberCount)} member`,
+    tone: "bg-primary/10 text-primary",
+  },
+  {
+    label: `Sumber ${props.data.sourceType.replace("_", " ")}`,
+    tone: "bg-muted text-muted-foreground",
+  },
+  {
+    label: props.data.groupId,
+    tone: "bg-muted text-muted-foreground font-mono",
+  },
+]);
+
 const overviewCards = computed(() => [
   {
     label: "Total Campaign",
     value: props.relationSummary.campaigns.total.toLocaleString("id-ID"),
     tone: "text-foreground",
+    shell: "rounded-lg border border-border bg-background p-4",
   },
   {
     label: "Account Tersentuh",
     value: props.groupReport.uniqueAccountsTouched.toLocaleString("id-ID"),
     tone: "text-foreground",
+    shell: "rounded-lg border border-border bg-background p-4",
   },
   {
     label: "Total Logs",
     value: props.groupReport.totalLogs.toLocaleString("id-ID"),
     tone: "text-foreground",
+    shell: "rounded-lg border border-border bg-background p-4",
   },
   {
     label: "Success Rate",
     value: fmtPercent(props.groupReport.logSuccessRate),
-    tone: "text-foreground",
+    tone: "text-emerald-600 dark:text-emerald-400",
+    shell:
+      "rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-sm",
   },
   {
     label: "Error Logs",
     value: props.groupReport.errorLogs.toLocaleString("id-ID"),
     tone: "text-red-600 dark:text-red-400",
+    shell: "rounded-lg border border-red-500/30 bg-red-500/10 p-4 shadow-sm",
   },
   {
     label: "Member Count",
     value: fmtNumber(props.data.memberCount),
-    tone: "text-foreground",
+    tone: "text-primary",
+    shell: "rounded-lg border border-primary/30 bg-primary/10 p-4 shadow-sm",
   },
 ]);
 
 const featuredCampaignLinks = computed(() => props.campaignRelations.slice(0, 3));
 const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
+const primaryCampaignLink = computed(() => props.campaignRelations[0] ?? null);
+const primaryAccountLink = computed(() => props.accountRelations[0] ?? null);
 </script>
 
 <template>
@@ -227,7 +255,7 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
           :href="data.groupUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+          class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
         >
           <ExternalLink class="size-4" /> Buka Group
         </a>
@@ -242,19 +270,26 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
           >
             <FolderKanban class="size-5" />
           </div>
-          <div class="space-y-1">
-            <div class="flex flex-wrap items-center gap-2">
+          <div class="min-w-0 space-y-3">
+            <div class="space-y-1">
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">
+                Group Overview
+              </div>
               <h2 class="text-lg font-semibold">{{ data.groupName || data.groupId }}</h2>
+            </div>
+            <div class="flex flex-wrap gap-2">
               <span
-                class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium capitalize"
-                :class="statusBadge(data.groupType)"
+                v-for="item in heroMeta"
+                :key="item.label"
+                class="inline-flex items-center rounded-full px-2.5 py-1 text-xs"
+                :class="item.tone"
               >
-                {{ data.groupType }}
+                {{ item.label }}
               </span>
             </div>
             <p class="text-sm text-muted-foreground">
-              {{ data.groupId }} · Sumber {{ data.sourceType.replace("_", " ") }} · Member
-              {{ fmtNumber(data.memberCount) }}
+              Detail group Facebook, ringkasan performa campaign, dan aktivitas account
+              yang pernah menyentuh group ini.
             </p>
           </div>
         </div>
@@ -263,12 +298,12 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
           <div
             v-for="card in overviewCards"
             :key="card.label"
-            class="rounded-lg border border-border bg-background p-4"
+            :class="card.shell"
           >
             <div class="text-xs uppercase tracking-wide text-muted-foreground">
               {{ card.label }}
             </div>
-            <div class="mt-2 text-lg font-semibold" :class="card.tone">
+            <div class="mt-2 text-2xl font-semibold leading-none" :class="card.tone">
               {{ card.value }}
             </div>
           </div>
@@ -333,6 +368,42 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
           <div class="rounded-md border border-border bg-background px-3 py-2">
             <dt class="text-xs text-muted-foreground">Log Terakhir</dt>
             <dd class="mt-1">{{ fmtDate(groupReport.lastLogAt) }}</dd>
+          </div>
+          <div class="rounded-md border border-border bg-background px-3 py-2">
+            <dt class="text-xs text-muted-foreground">Campaign Utama</dt>
+            <dd class="mt-1 space-y-1">
+              <Link
+                v-if="primaryCampaignLink"
+                :href="`/campaigns/${primaryCampaignLink.campaignId}`"
+                class="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-primary hover:bg-muted"
+              >
+                Buka {{ primaryCampaignLink.name }}
+              </Link>
+              <span v-else class="text-sm text-muted-foreground">—</span>
+              <div
+                v-if="primaryCampaignLink"
+                class="text-xs text-muted-foreground"
+              >
+                {{ typeLabel(primaryCampaignLink.type) }} · {{ primaryCampaignLink.logCount }} log
+              </div>
+            </dd>
+          </div>
+          <div class="rounded-md border border-border bg-background px-3 py-2">
+            <dt class="text-xs text-muted-foreground">Account Utama</dt>
+            <dd class="mt-1 space-y-1">
+              <Link
+                v-if="primaryAccountLink"
+                :href="`/accounts/${primaryAccountLink.accountId}`"
+                class="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-primary hover:bg-muted"
+              >
+                Buka {{ primaryAccountLink.label }}
+              </Link>
+              <span v-else class="text-sm text-muted-foreground">—</span>
+              <div v-if="primaryAccountLink" class="text-xs text-muted-foreground">
+                {{ primaryAccountLink.logCount }} log · session
+                {{ primaryAccountLink.sessionStatus || "—" }}
+              </div>
+            </dd>
           </div>
         </dl>
       </section>
@@ -436,7 +507,7 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
           <Activity class="size-4 text-primary" />
           <h2 class="text-base font-semibold">Activity Window</h2>
         </div>
-        <div class="mt-4 grid gap-3 text-sm">
+        <div class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div class="rounded-md border border-border bg-background px-3 py-3">
             <div class="text-xs text-muted-foreground">Campaign Relasi</div>
             <div class="mt-1 text-lg font-semibold">
@@ -455,6 +526,32 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
               {{ groupReport.uniqueAccountsTouched }}
             </div>
           </div>
+          <div class="rounded-md border border-border bg-background px-3 py-3">
+            <div class="text-xs text-muted-foreground">Quick Link Campaign</div>
+            <div class="mt-2 flex items-center gap-2">
+              <Link
+                v-if="primaryCampaignLink"
+                :href="`/campaigns/${primaryCampaignLink.campaignId}`"
+                class="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-primary hover:bg-muted"
+              >
+                Detail Campaign
+              </Link>
+              <span v-else class="text-sm text-muted-foreground">—</span>
+            </div>
+          </div>
+          <div class="rounded-md border border-border bg-background px-3 py-3">
+            <div class="text-xs text-muted-foreground">Quick Link Account</div>
+            <div class="mt-2 flex items-center gap-2">
+              <Link
+                v-if="primaryAccountLink"
+                :href="`/accounts/${primaryAccountLink.accountId}`"
+                class="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-primary hover:bg-muted"
+              >
+                Detail Account
+              </Link>
+              <span v-else class="text-sm text-muted-foreground">—</span>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -466,7 +563,7 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
       </div>
       <div class="mt-4 overflow-x-auto rounded-lg border border-border">
         <table class="w-full text-sm">
-          <thead class="bg-teal-600/40 dark:bg-teal-600/20 text-left">
+          <thead class="bg-muted/60 text-left">
             <tr class="border-b border-border">
               <th class="px-4 py-3 font-medium">Campaign</th>
               <th class="px-4 py-3 font-medium">Type</th>
@@ -547,7 +644,7 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
         </div>
         <div class="mt-4 overflow-x-auto rounded-lg border border-border">
           <table class="w-full text-sm">
-            <thead class="bg-cyan-600/40 dark:bg-cyan-600/20 text-left">
+          <thead class="bg-muted/60 text-left">
               <tr class="border-b border-border">
                 <th class="px-4 py-3 font-medium">Account</th>
                 <th class="px-4 py-3 font-medium">Session</th>
@@ -622,7 +719,7 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
         </div>
         <div class="mt-4 overflow-x-auto rounded-lg border border-border">
           <table class="w-full text-sm">
-            <thead class="bg-indigo-600/40 dark:bg-indigo-600/20 text-left">
+          <thead class="bg-muted/60 text-left">
               <tr class="border-b border-border">
                 <th class="px-4 py-3 font-medium">Action</th>
                 <th class="px-4 py-3 font-medium">Total</th>
@@ -664,7 +761,7 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
       </div>
       <div class="mt-4 overflow-x-auto rounded-lg border border-border">
         <table class="w-full text-sm">
-          <thead class="bg-fuchsia-600/40 dark:bg-fuchsia-600/20 text-left">
+          <thead class="bg-muted/60 text-left">
             <tr class="border-b border-border">
               <th class="px-4 py-3 font-medium">Waktu</th>
               <th class="px-4 py-3 font-medium">Campaign</th>
@@ -710,9 +807,9 @@ const featuredAccountLinks = computed(() => props.accountRelations.slice(0, 3));
                   {{ row.status }}
                 </span>
               </td>
-              <td class="px-4 py-3 align-top">{{ fmtDuration(row.durationMs) }}</td>
+              <td class="w-28 px-4 py-3 align-top">{{ fmtDuration(row.durationMs) }}</td>
               <td class="px-4 py-3 align-top">
-                <div class="max-w-xl text-muted-foreground">
+                <div class="max-w-xl line-clamp-2 text-muted-foreground">
                   {{ row.message || "—" }}
                 </div>
               </td>

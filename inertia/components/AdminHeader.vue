@@ -12,7 +12,7 @@ defineEmits<{
 
 <template>
   <header
-    class="flex sticky top-0 left-0 right-0 h-16 shrink-0 items-center justify-between gap-4 border-b border-neutral-300 dark:border-neutral-700 px-4 sm:px-6 shadow-md"
+    class="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-neutral-300 bg-background px-4 shadow-md dark:border-neutral-700 sm:px-6"
   >
     <div class="flex items-center gap-3">
       <button
@@ -39,7 +39,7 @@ defineEmits<{
         <slot name="logo">
           <img src="/logo.png" alt="" class="h-7 w-7 rounded-full" />
           <span class="hidden text-base font-semibold text-primary sm:inline">
-            FB Automation
+            Chunk Pipit
           </span>
         </slot>
       </Link>

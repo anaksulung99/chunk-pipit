@@ -40,7 +40,7 @@ const props = defineProps<{
 }>();
 
 const expiresAtDate = ref<Date | null>(
-  props.license?.expiresAt ? parseDate(props.license.expiresAt.slice(0, 10)) : null
+  props.license?.expiresAt ? new Date(props.license.expiresAt) : null
 );
 
 const form = useForm<UpdateForm>({

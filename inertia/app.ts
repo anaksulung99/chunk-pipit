@@ -16,7 +16,7 @@ import 'vue3-toastify/dist/index.css'
 import '@vuepic/vue-datepicker/dist/main.css'
 import 'vue-tel-input/vue-tel-input.css'
 
-const appName = import.meta.env.VITE_APP_NAME || 'Facebook Automation Tool'
+const appName = import.meta.env.VITE_APP_NAME || 'Chunk Pipit Tool'
 
 createInertiaApp({
   title: (title) => (title ? `${title} - ${appName}` : appName),

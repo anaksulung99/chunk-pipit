@@ -108,7 +108,23 @@ const columns: DataTableColumn[] = [
   { key: 'actions', label: '', align: 'right' },
 ]
 
-const TYPES = ['all', 'scrape_group', 'auto_share', 'auto_join']
+const TYPES = [
+  'all',
+  'scrape_group',
+  'auto_share',
+  'auto_join',
+  'scrape_profile',
+  'auto_add_friend',
+  'auto_like',
+  'auto_comment',
+  'auto_invite',
+  'auto_post',
+  'auto_unfriend',
+  'auto_inbox',
+  'auto_delete',
+  'auto_confirm',
+  'auto_create',
+]
 const STATUS = ['all', 'draft', 'running', 'paused', 'completed', 'failed']
 
 const typeLabel = (t: string) =>

@@ -120,6 +120,7 @@ type RelationSummary = {
 type CampaignProgress = {
   stage: string;
   stageLabel: string;
+  actionLabel: string | null;
   targetLabel: string;
   processed: number;
   total: number | null;
@@ -134,11 +135,20 @@ type CampaignProgress = {
   indeterminate: boolean;
   currentBatch: number | null;
   totalBatches: number | null;
+  completedBatches: number;
+  activeBatches: number;
   batchLabel: string | null;
   etaSeconds: number | null;
+  elapsedSeconds: number | null;
+  throughputPerMinute: number | null;
   currentAccountLabel: string | null;
   currentGroupName: string | null;
+  currentTargetCode: string | null;
   currentLabel: string | null;
+  skippedByType: number;
+  skippedByMemberCount: number;
+  skippedByMissingName: number;
+  skippedDuplicates: number;
   updatedAt: string | null;
 };
 type ActionReportRow = {
@@ -326,6 +336,7 @@ const typeLabel = (t: string) =>
     scrape_profile: "Scrape Profile",
     auto_add_friend: "Auto Add Friend",
     auto_invite: "Auto Invite",
+    auto_unfriend: "Auto Unfriend",
     auto_confirm: "Auto Confirm",
   }[t] ?? t);
 
@@ -399,6 +410,10 @@ function fmtEta(seconds: number | null) {
   if (minutes > 0) return `${minutes}m ${secs}d`;
   return `${secs}d`;
 }
+function fmtRate(value: number | null) {
+  if (value === null || Number.isNaN(value) || value <= 0) return "—";
+  return `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })}/m`;
+}
 function fmtNumber(value: number | null) {
   return value === null ? "—" : value.toLocaleString("id-ID");
 }
@@ -453,6 +468,23 @@ const progressBatchSummary = computed(() => {
     return `Batch ${progress.currentBatch}/${progress.totalBatches}`;
   return `Total batch ${progress.totalBatches}`;
 });
+const progressSkipReasons = computed(() => {
+  const progress = campaignProgress.value;
+  return [
+    progress.skippedByType > 0
+      ? `Skip tipe ${progress.skippedByType.toLocaleString("id-ID")}`
+      : null,
+    progress.skippedByMemberCount > 0
+      ? `Skip minimum ${progress.skippedByMemberCount.toLocaleString("id-ID")}`
+      : null,
+    progress.skippedByMissingName > 0
+      ? `Skip nama kosong ${progress.skippedByMissingName.toLocaleString("id-ID")}`
+      : null,
+    progress.skippedDuplicates > 0
+      ? `Skip duplikat ${progress.skippedDuplicates.toLocaleString("id-ID")}`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+});
 
 const fallbackLogs = computed(() =>
   liveLogs.value.filter((log) => log.action === "scrape_fallback")
@@ -484,6 +516,7 @@ function actionLabel(action: string) {
       scrape: "Scrape Group",
       auto_add_friend: "Auto Add Friend",
       auto_invite: "Auto Invite",
+      auto_unfriend: "Auto Unfriend",
       auto_confirm: "Auto Confirm",
     }[action] ?? action
   );
@@ -644,25 +677,56 @@ const overviewCards = computed(() => [
             >
               {{ campaignProgress.stageLabel }}
             </span>
+            <span
+              v-if="campaignProgress.actionLabel"
+              class="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+            >
+              {{ campaignProgress.actionLabel }}
+            </span>
           </div>
           <p class="text-xs text-muted-foreground">{{ campaignProgress.currentLabel }}</p>
           <div
             class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"
           >
             <span v-if="progressBatchSummary">{{ progressBatchSummary }}</span>
+            <span v-if="campaignProgress.totalBatches">
+              Selesai: {{ campaignProgress.completedBatches.toLocaleString("id-ID") }} /
+              {{ campaignProgress.totalBatches.toLocaleString("id-ID") }}
+            </span>
+            <span v-if="campaignProgress.activeBatches > 0">
+              Batch aktif: {{ campaignProgress.activeBatches.toLocaleString("id-ID") }}
+            </span>
             <span v-if="campaignProgress.currentAccountLabel">
               Akun: {{ campaignProgress.currentAccountLabel }}
             </span>
             <span v-if="campaignProgress.currentGroupName">
               Target: {{ campaignProgress.currentGroupName }}
             </span>
+            <span v-if="campaignProgress.currentTargetCode">
+              Kode: {{ campaignProgress.currentTargetCode }}
+            </span>
+          </div>
+          <div
+            v-if="progressSkipReasons.length"
+            class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"
+          >
+            <span
+              v-for="reason in progressSkipReasons"
+              :key="reason"
+              class="inline-flex rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300"
+            >
+              {{ reason }}
+            </span>
           </div>
         </div>
         <div class="text-right">
           <div class="text-lg font-semibold">{{ progressPercentLabel }}</div>
           <div class="text-xs text-muted-foreground">{{ progressSummary }}</div>
-          <div class="text-[11px] text-muted-foreground">
-            ETA {{ fmtEta(campaignProgress.etaSeconds) }}
+          <div class="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
+            <span>ETA {{ fmtEta(campaignProgress.etaSeconds) }}</span>
+            <span>Elapsed {{ fmtEta(campaignProgress.elapsedSeconds) }}</span>
+            <span>Laju {{ fmtRate(campaignProgress.throughputPerMinute) }}</span>
+            <span>Tick {{ fmt(campaignProgress.updatedAt) }}</span>
           </div>
         </div>
       </div>
@@ -679,7 +743,7 @@ const overviewCards = computed(() => [
         ></div>
       </div>
 
-      <dl class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-7">
+      <dl class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5 xl:grid-cols-10">
         <div>
           <dt class="text-xs text-muted-foreground">Processed</dt>
           <dd>{{ campaignProgress.processed.toLocaleString("id-ID") }}</dd>
@@ -714,6 +778,29 @@ const overviewCards = computed(() => [
             {{ campaignProgress.pending.toLocaleString("id-ID") }} /
             {{ campaignProgress.running.toLocaleString("id-ID") }}
           </dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted-foreground">Batch Done / Active</dt>
+          <dd>
+            {{ campaignProgress.completedBatches.toLocaleString("id-ID") }} /
+            {{ campaignProgress.activeBatches.toLocaleString("id-ID") }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted-foreground">Skip Type</dt>
+          <dd>{{ campaignProgress.skippedByType.toLocaleString("id-ID") }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted-foreground">Skip Minimum</dt>
+          <dd>{{ campaignProgress.skippedByMemberCount.toLocaleString("id-ID") }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted-foreground">Skip Nama</dt>
+          <dd>{{ campaignProgress.skippedByMissingName.toLocaleString("id-ID") }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted-foreground">Skip Duplikat</dt>
+          <dd>{{ campaignProgress.skippedDuplicates.toLocaleString("id-ID") }}</dd>
         </div>
       </dl>
     </section>

@@ -14,6 +14,7 @@ import {
   TrendingUp,
   BarChart3,
   CalendarDays,
+  ContactIcon,
 } from "@lucide/vue";
 
 type TeamRow = {
@@ -65,6 +66,7 @@ const props = defineProps<{
     accounts: { total: number; byStatus: Tally };
     proxies: { total: number; byStatus: Tally };
     fingerprints: number;
+    facebookProfiles: number;
     today: { total: number; success: number; failed: number };
   };
   running: { id: string; name: string; type: string; total: number; done: number }[];
@@ -147,6 +149,13 @@ const kpis = [
     )} private`,
     icon: Users,
     color: "text-violet-600 dark:text-violet-400",
+  },
+  {
+    label: "Facebook Profiles",
+    value: props.stats.facebookProfiles,
+    sub: "profil",
+    icon: ContactIcon,
+    color: "text-amber-600 dark:text-amber-400",
   },
   {
     label: "Proxy Sehat",
@@ -382,6 +391,10 @@ const topActionMax = computed(() =>
   Math.max(1, ...props.analytics.actionBreakdown.map((row) => row.total), 1)
 );
 
+async function exportCookies() {
+  window.location.assign(`/teams/${props.team.id}/export-cookies`);
+}
+
 const getFbStatusColor = (k: string) =>
   ({
     active: "bg-emerald-500 text-white",
@@ -430,7 +443,7 @@ const getFbStatusColor = (k: string) =>
       </div>
     </template>
 
-    <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
       <div
         v-for="k in kpis"
         :key="k.label"
@@ -587,7 +600,7 @@ const getFbStatusColor = (k: string) =>
           <div
             v-for="row in analytics.actionBreakdown"
             :key="row.action"
-            class="space-y-1.5"
+            class="space-y-1.5 bg-background rounded-md p-2 border border-border"
           >
             <div class="flex items-center justify-between gap-3 text-sm">
               <div class="font-medium capitalize">{{ actionLabel(row.action) }}</div>
@@ -722,7 +735,7 @@ const getFbStatusColor = (k: string) =>
 
     <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
       <div class="space-y-4 rounded-lg border border-border bg-card p-4">
-        <div>
+        <div class="rounded-md border border-border bg-background p-1.5">
           <h3 class="mb-2 text-sm font-medium">Campaign per Status</h3>
           <div v-if="stats.campaigns.total" class="space-y-1.5">
             <div
@@ -745,7 +758,7 @@ const getFbStatusColor = (k: string) =>
           <p v-else class="text-xs text-muted-foreground">Belum ada campaign.</p>
         </div>
 
-        <div>
+        <div class="rounded-md border border-border bg-background p-1.5">
           <h3 class="mb-2 text-sm font-medium">Akun per Status</h3>
           <div v-if="stats.accounts.total" class="space-y-1.5">
             <div
@@ -768,7 +781,7 @@ const getFbStatusColor = (k: string) =>
           <p v-else class="text-xs text-muted-foreground">Belum ada akun.</p>
         </div>
 
-        <div>
+        <div class="rounded-md border border-border bg-background p-1.5">
           <h3 class="mb-2 text-sm font-medium">Proxy per Status</h3>
           <div v-if="stats.proxies.total" class="space-y-1.5">
             <div
@@ -792,7 +805,7 @@ const getFbStatusColor = (k: string) =>
         </div>
       </div>
 
-      <div class="rounded-lg border border-border bg-card p-4">
+      <div class="rounded-lg border border-border bg-background p-4">
         <h3 class="mb-2 text-sm font-medium">Aktivitas Terbaru</h3>
         <div v-if="recentLogs.length" class="space-y-1">
           <div
@@ -830,9 +843,23 @@ const getFbStatusColor = (k: string) =>
       <section
         class="rounded-lg border border-border bg-card p-4 overflow-hidden space-y-4"
       >
-        <h3 class="mb-3 text-sm font-medium">Top Facebook Account</h3>
+        <div class="flex items-center justify-between">
+          <h3 class="mb-3 text-sm font-medium">Top Facebook Account</h3>
+          <div class="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              class="text-xs font-medium text-white bg-sky-600 hover:bg-sky-700"
+              @click="exportCookies"
+            >
+              <Cookie /> Export Cookies
+            </Button>
+          </div>
+        </div>
 
-        <div class="hidden md:block overflow-x-auto">
+        <div
+          class="hidden md:block overflow-x-auto rounded-md border border-border bg-background p-2"
+        >
           <table class="w-full border-collapse text-sm">
             <thead>
               <tr class="bg-teal-600/40 dark:bg-teal-600/20">
@@ -884,7 +911,7 @@ const getFbStatusColor = (k: string) =>
           <div
             v-for="a in props.fbAccounts"
             :key="a.id"
-            class="rounded-lg border border-border bg-card p-4 space-y-2 hover:bg-muted/30 transition-colors"
+            class="rounded-lg border border-border bg-background p-4 space-y-2 hover:bg-muted/30 transition-colors"
           >
             <div class="flex items-start justify-between">
               <div class="font-medium text-sm">{{ a.label }}</div>
@@ -941,7 +968,9 @@ const getFbStatusColor = (k: string) =>
       >
         <h3 class="mb-3 text-sm font-medium">Top Facebook Group</h3>
 
-        <div class="hidden md:block overflow-x-auto">
+        <div
+          class="hidden md:block overflow-x-auto border border-border bg-background p-2"
+        >
           <table class="w-full border-collapse text-sm">
             <thead>
               <tr class="bg-teal-600/40 dark:bg-teal-600/20">

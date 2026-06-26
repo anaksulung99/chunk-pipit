@@ -12,9 +12,9 @@ const props = defineProps<{
     <div class="absolute top-3 right-3 z-50">
       <ThemeToggle />
     </div>
-    <div class="w-full max-w-md space-y-4">
+    <div class="w-full max-w-md space-y-2">
       <div class="flex items-center justify-center">
-        <img src="/logo.png" alt="logo" class="h-10 w-auto object-fill" />
+        <img src="/logo.png" alt="logo" class="h-16 w-auto object-fill" />
       </div>
       <div class="mb-8 text-center">
         <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>

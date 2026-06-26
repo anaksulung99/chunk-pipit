@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Data } from "@generated/data";
 import { Head, useForm, usePage } from "@inertiajs/vue3";
+import { router } from "@inertiajs/vue3";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { SaveIcon, Loader2 } from "@lucide/vue";
@@ -37,6 +38,7 @@ const submitProfile = () => {
         preserveScroll: true,
         onSuccess: () => {
           profileForm.reset("email", "fullName");
+          router.reload();
         },
       });
     }
@@ -51,6 +53,7 @@ const submitPassword = () => {
           preserveScroll: true,
           onSuccess: () => {
             passwordForm.reset("currentPassword", "newPassword", "confirmPassword");
+            router.reload();
           },
         });
       }

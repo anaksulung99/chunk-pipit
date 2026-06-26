@@ -14,7 +14,7 @@ import 'vue3-toastify/dist/index.css'
 import '@vuepic/vue-datepicker/dist/main.css'
 import 'vue-tel-input/vue-tel-input.css'
 
-const appName = 'Facebook Automation Tool'
+const appName = 'Chunk Pipit Tool'
 
 export default function render(page: any) {
   return createInertiaApp({

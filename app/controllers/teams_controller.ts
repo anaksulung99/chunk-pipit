@@ -17,6 +17,8 @@ import {
   updateUserValidator,
 } from '#validators/user'
 import { generateLicenseKey } from '#services/license/license_key'
+import encryption from '@adonisjs/core/services/encryption'
+import FacebookProfile from '#models/facebook_profile'
 
 const SORTABLE = ['created_at', 'full_name', 'email', 'role', 'is_active'] as const
 
@@ -208,19 +210,27 @@ export default class TeamsController {
     const todayStart = DateTime.now().startOf('day').toSQL()!
     const { analyticsStart, analyticsEnd, analyticsDayCount } = this.resolveAnalyticsRange(request)
 
-    const [campaignRows, groupRows, accountRows, proxyRows, fingerprintCount, analyticsLogs] =
-      await Promise.all([
-        Campaign.query().where('user_id', team.id).select('status', 'type'),
-        FacebookGroup.query().where('user_id', team.id).select('group_type'),
-        FacebookAccount.query().where('user_id', team.id).select('session_status'),
-        Proxy.query().where('user_id', team.id).select('status'),
-        FingerprintProfile.query().where('user_id', team.id).count('* as total'),
-        SessionLog.query()
-          .whereHas('campaign', (c) => c.where('user_id', team.id))
-          .where('created_at', '>=', analyticsStart.toSQL()!)
-          .where('created_at', '<=', analyticsEnd.toSQL()!)
-          .select('action', 'status', 'created_at'),
-      ])
+    const [
+      campaignRows,
+      groupRows,
+      accountRows,
+      proxyRows,
+      fingerprintCount,
+      facebookProfileCount,
+      analyticsLogs,
+    ] = await Promise.all([
+      Campaign.query().where('user_id', team.id).select('status', 'type'),
+      FacebookGroup.query().where('user_id', team.id).select('group_type'),
+      FacebookAccount.query().where('user_id', team.id).select('session_status'),
+      Proxy.query().where('user_id', team.id).select('status'),
+      FingerprintProfile.query().where('user_id', team.id).count('* as total'),
+      FacebookProfile.query().where('user_id', team.id).count('* as totalProfiles'),
+      SessionLog.query()
+        .whereHas('campaign', (c) => c.where('user_id', team.id))
+        .where('created_at', '>=', analyticsStart.toSQL()!)
+        .where('created_at', '<=', analyticsEnd.toSQL()!)
+        .select('action', 'status', 'created_at'),
+    ])
 
     const licenses = await License.query().where('user_id', team.id).preload('devices')
 
@@ -407,6 +417,7 @@ export default class TeamsController {
         },
         proxies: { total: proxyRows.length, byStatus: tally(proxyRows.map((p) => p.status)) },
         fingerprints: Number((fingerprintCount[0] as any).$extras.total ?? 0),
+        facebookProfiles: Number((facebookProfileCount[0] as any).$extras.totalProfiles ?? 0),
         today: {
           total: todayActions.length,
           success: todayByStatus.success ?? 0,
@@ -589,6 +600,61 @@ export default class TeamsController {
     await team.save()
     session.flash('success', isActive ? 'Akun team diaktifkan.' : 'Akun team dinonaktifkan.')
     return response.redirect().back()
+  }
+
+  async exportCookies({ params, response }: HttpContext) {
+    const team = await User.query().where('id', params.id).firstOrFail()
+
+    const accounts = await FacebookAccount.query()
+      .where('user_id', team.id)
+      .preload('cookies', (query) => query.orderBy('created_at', 'asc'))
+      .orderBy('created_at', 'asc')
+
+    const payload = accounts.map((account) => {
+      let cookieId = 1
+
+      return account.cookies.flatMap((cookie) => {
+        let value: string | null
+        try {
+          value = encryption.decrypt<string>(cookie.value)
+        } catch {
+          value = null
+        }
+
+        if (value === null) return []
+
+        return [
+          {
+            domain: cookie.domain ?? '.facebook.com',
+            ...(cookie.expires !== null && cookie.expires !== undefined
+              ? { expirationDate: Number(cookie.expires) }
+              : {}),
+            hostOnly: cookie.domain ? !cookie.domain.startsWith('.') : false,
+            httpOnly: cookie.httpOnly ?? false,
+            name: cookie.key,
+            path: cookie.path ?? '/',
+            sameSite: cookie.sameSite ?? 'no_restriction',
+            secure: cookie.secure ?? true,
+            session: cookie.expires === null || cookie.expires === undefined,
+            storeId: '0',
+            value,
+            id: cookieId++,
+          },
+        ]
+      })
+    })
+
+    const safeName = (team.fullName || team.email || team.id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    const filename = `${safeName || 'team'}-facebook-cookies.json`
+
+    return response
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .header('Cache-Control', 'no-store')
+      .type('application/json')
+      .send(JSON.stringify(payload, null, 2))
   }
 
   private resolveAnalyticsRange(request: HttpContext['request']) {

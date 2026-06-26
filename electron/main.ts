@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 process.env.APP_ROOT = path.join(__dirname, '..')
 
-export const appName = process.env['VITE_APP_NAME'] || 'Facebook Automation'
+export const appName = process.env['VITE_APP_NAME'] || 'Chunk Pipit'
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 const isLocalDev = !app.isPackaged
 

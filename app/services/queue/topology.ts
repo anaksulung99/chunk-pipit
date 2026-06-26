@@ -15,6 +15,7 @@ export type CampaignType =
   | 'scrape_profile'
   | 'auto_add_friend'
   | 'auto_invite'
+  | 'auto_unfriend'
   | 'auto_confirm'
 
 export const QUEUES: Record<CampaignType, { queue: string; routingKey: string }> = {
@@ -24,5 +25,6 @@ export const QUEUES: Record<CampaignType, { queue: string; routingKey: string }>
   scrape_profile: { queue: 'q.scrape-profile', routingKey: 'scrape.profile' },
   auto_add_friend: { queue: 'q.auto-add-friend', routingKey: 'friend.add' },
   auto_invite: { queue: 'q.auto-invite', routingKey: 'friend.invite' },
+  auto_unfriend: { queue: 'q.auto-unfriend', routingKey: 'friend.unfriend' },
   auto_confirm: { queue: 'q.auto-confirm', routingKey: 'friend.confirm' },
 }

@@ -1,4 +1,5 @@
 import Campaign from '#models/campaign'
+import CampaignGroup from '#models/campaign_group'
 import CampaignProfile from '#models/campaign_profile'
 import FacebookGroup from '#models/facebook_group'
 import FacebookProfile from '#models/facebook_profile'
@@ -22,6 +23,7 @@ import {
   runAutoAddFriend,
   runAutoConfirm,
   runAutoInvite,
+  runAutoUnfriend,
   runAutoShare,
   runAutoJoin,
   runScrapeProfile,
@@ -141,6 +143,58 @@ function shouldRefreshScrapedProfileMetadata(
     return true
   }
   return false
+}
+
+function normalizeProfileNameText(value: string | null | undefined) {
+  return value?.replace(/\s+/g, ' ').trim() || ''
+}
+
+function isWeakProfileNameCandidate(value: string | null | undefined) {
+  const normalized = normalizeProfileNameText(value).toLowerCase()
+  if (!normalized) return true
+
+  const blocked = [
+    'chat',
+    'chats',
+    'obrolan',
+    'messenger',
+    'kotak masuk',
+    'inbox',
+    'message',
+    'pesan',
+    'friends',
+    'friend',
+    'teman',
+    'follow',
+    'ikuti',
+    'watch',
+    'saved',
+    'tersimpan',
+  ]
+
+  if (blocked.some((item) => normalized === item || normalized.includes(item))) return true
+  if (/(buat pin|access your chats|obrolan anda|perangkat mana pun|device|chat pin)/i.test(normalized))
+    return true
+  return false
+}
+
+function preferProfileName(
+  currentValue: string | null | undefined,
+  nextValue: string | null | undefined
+) {
+  const current = normalizeProfileNameText(currentValue)
+  const next = normalizeProfileNameText(nextValue)
+
+  if (!current) return next || null
+  if (!next) return current
+  if (isWeakProfileNameCandidate(next)) return current
+  if (isWeakProfileNameCandidate(current)) return next
+  if (next.split(' ').length === 1 && current.split(' ').length >= 2) return current
+  if (current.includes('(') && !next.includes('(') && next.split(' ').length <= current.split(' ').length) {
+    return current
+  }
+
+  return next
 }
 
 type AccountRunResult =
@@ -993,11 +1047,15 @@ export async function runCampaign(campaignId: string): Promise<void> {
                 if (shouldRefreshScrapedProfileMetadata(profile, { minFriendCount })) {
                   try {
                     const metadata = await extractProfileMetadataFromPage(page, profile)
+                    const preferredProfileName = preferProfileName(
+                      profile.profileName,
+                      metadata.profileName
+                    )
                     resolvedProfile = {
                       ...profile,
                       profileId: metadata.profileId,
                       profileUrl: metadata.profileUrl,
-                      profileName: metadata.profileName ?? profile.profileName,
+                      profileName: preferredProfileName,
                       friendCount: metadata.friendCount ?? profile.friendCount,
                       mutualFriendCount: metadata.mutualFriendCount ?? profile.mutualFriendCount,
                       followerCount: metadata.followerCount ?? profile.followerCount,
@@ -1055,9 +1113,13 @@ export async function runCampaign(campaignId: string): Promise<void> {
                   }
                 )
 
+                const finalProfileName = preferProfileName(
+                  persistedProfile.profileName,
+                  resolvedProfile.profileName
+                )
                 persistedProfile.merge({
                   profileUrl: resolvedProfile.profileUrl,
-                  ...(resolvedProfile.profileName ? { profileName: resolvedProfile.profileName } : {}),
+                  ...(finalProfileName ? { profileName: finalProfileName } : {}),
                   ...(resolvedProfile.friendCount !== null
                     ? { friendCount: resolvedProfile.friendCount }
                     : {}),
@@ -1278,18 +1340,37 @@ export async function runCampaign(campaignId: string): Promise<void> {
                   }
                 )
 
-                const found = await runScrapeProfile(
-                  page,
-                  {
-                    ...config,
-                    scrapeProfileType: 'group_member',
-                  },
-                  {
-                    sourceUrl:
-                      group.groupUrl || `https://www.facebook.com/groups/${group.groupId}/members`,
-                    maxTargets: remainingTargets,
+                let found: ScrapedProfile[] = []
+                try {
+                  found = await runScrapeProfile(
+                    page,
+                    {
+                      ...config,
+                      scrapeProfileType: 'group_member',
+                    },
+                    {
+                      sourceUrl:
+                        group.groupUrl || `https://www.facebook.com/groups/${group.groupId}/members`,
+                      maxTargets: remainingTargets,
+                    }
+                  )
+                  const campaignGroupRow =
+                    campaign.groups.find((row) => row.id === campaignGroup.id) ??
+                    (await CampaignGroup.find(campaignGroup.id))
+                  if (campaignGroupRow) {
+                    campaignGroupRow.status = found.length ? 'done' : 'skipped'
+                    await campaignGroupRow.save()
                   }
-                )
+                } catch (error) {
+                  const campaignGroupRow =
+                    campaign.groups.find((row) => row.id === campaignGroup.id) ??
+                    (await CampaignGroup.find(campaignGroup.id))
+                  if (campaignGroupRow) {
+                    campaignGroupRow.status = 'failed'
+                    await campaignGroupRow.save()
+                  }
+                  throw error
+                }
 
                 for (const profile of found) {
                   if (!discoveredProfiles.has(profile.profileId)) {
@@ -1333,11 +1414,15 @@ export async function runCampaign(campaignId: string): Promise<void> {
                 if (shouldRefreshScrapedProfileMetadata(profile, { minFriendCount })) {
                   try {
                     const metadata = await extractProfileMetadataFromPage(page, profile)
+                    const preferredProfileName = preferProfileName(
+                      profile.profileName,
+                      metadata.profileName
+                    )
                     resolvedProfile = {
                       ...profile,
                       profileId: metadata.profileId,
                       profileUrl: metadata.profileUrl,
-                      profileName: metadata.profileName ?? profile.profileName,
+                      profileName: preferredProfileName,
                       friendCount: metadata.friendCount ?? profile.friendCount,
                       mutualFriendCount: metadata.mutualFriendCount ?? profile.mutualFriendCount,
                       followerCount: metadata.followerCount ?? profile.followerCount,
@@ -1383,9 +1468,13 @@ export async function runCampaign(campaignId: string): Promise<void> {
                   }
                 )
 
+                const finalProfileName = preferProfileName(
+                  persistedProfile.profileName,
+                  resolvedProfile.profileName
+                )
                 persistedProfile.merge({
                   profileUrl: resolvedProfile.profileUrl,
-                  ...(resolvedProfile.profileName ? { profileName: resolvedProfile.profileName } : {}),
+                  ...(finalProfileName ? { profileName: finalProfileName } : {}),
                   ...(resolvedProfile.friendCount !== null
                     ? { friendCount: resolvedProfile.friendCount }
                     : {}),
@@ -1635,6 +1724,153 @@ export async function runCampaign(campaignId: string): Promise<void> {
             {
               runningCount: activeBatches,
               currentAction: 'auto_add_friend',
+              currentLabel: `Batch akun ${batchNumber}/${assignments.length} selesai.`,
+            },
+            {
+              completedBatches,
+              activeBatches,
+            }
+          )
+        }
+      )
+    } else if (campaign.type === 'auto_unfriend') {
+      if (!accounts.length) throw new Error('Campaign auto unfriend membutuhkan minimal 1 akun.')
+
+      const targetProfiles = campaign.profiles
+        .map((row) => ({
+          campaignProfileId: row.id,
+          facebookProfileId: row.profile?.id ?? row.profileId,
+          profileId: row.profile?.profileId ?? row.profileId,
+          profileUrl: row.profile?.profileUrl ?? null,
+          profileName: row.profile?.profileName ?? row.profile?.profileId ?? row.profileId,
+        }))
+        .filter((profile) => Boolean(profile.profileId))
+
+      if (!targetProfiles.length) {
+        throw new Error('Campaign auto unfriend membutuhkan profile target dari profile pool.')
+      }
+
+      const chunks = distribute(targetProfiles, accounts.length)
+      const assignments = accounts.map((account, index) => ({ account, profiles: chunks[index] ?? [] }))
+      let batchCursor = 0
+      let completedBatches = 0
+      let activeBatches = 0
+
+      await updateRuntime(
+        {
+          targetType: 'profile',
+          totalTargets: targetProfiles.length,
+          processedTargets: 0,
+          successCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          totalBatches: assignments.length,
+          currentAction: 'auto_unfriend',
+          currentLabel: `Menyiapkan ${assignments.length} batch akun untuk auto unfriend.`,
+        },
+        {
+          completedBatches: 0,
+          activeBatches: 0,
+        }
+      )
+
+      await runPool(
+        assignments,
+        campaign.maxConcurrency,
+        async ({ account: campaignAccount, profiles }) => {
+          batchCursor++
+          const batchNumber = batchCursor
+          activeBatches++
+
+          await updateRuntime(
+            {
+              currentBatch: batchNumber,
+              currentAccountId: campaignAccount.account?.id ?? null,
+              currentAction: 'auto_unfriend',
+              currentLabel: `Batch akun ${batchNumber}/${assignments.length}: ${campaignAccount.account?.label ?? 'Akun'}.`,
+              runningCount: activeBatches,
+            },
+            {
+              batchLabel: `Batch akun ${batchNumber}/${assignments.length}`,
+              currentAccountLabel: campaignAccount.account?.label ?? null,
+              completedBatches,
+              activeBatches,
+            }
+          )
+
+          await withAccount(campaignAccount, async (page) => {
+            for (const targetProfile of profiles) {
+              await updateRuntime(
+                {
+                  currentAction: 'auto_unfriend',
+                  currentLabel: `Memproses unfriend ${targetProfile.profileName}.`,
+                  runningCount: activeBatches,
+                },
+                {
+                  currentGroupName: targetProfile.profileName,
+                  currentGroupCode: targetProfile.profileId,
+                }
+              )
+
+              const result = await runAutoUnfriend(page, {
+                profileId: targetProfile.profileId,
+                profileUrl: targetProfile.profileUrl,
+              })
+
+              const campaignProfile =
+                campaign.profiles.find((row) => row.id === targetProfile.campaignProfileId) ??
+                (await CampaignProfile.find(targetProfile.campaignProfileId))
+              if (campaignProfile) {
+                campaignProfile.status =
+                  result.status === 'done'
+                    ? 'done'
+                    : result.status === 'skipped'
+                      ? 'skipped'
+                      : 'failed'
+                await campaignProfile.save()
+              }
+
+              await log(
+                campaign.id,
+                'auto_unfriend',
+                result.status === 'done' ? 'success' : result.status,
+                result.message,
+                campaignAccount.account?.id
+              )
+              await updateProfileLifecycle(targetProfile.facebookProfileId, {
+                lifecycleStatus:
+                  result.status === 'done' ? 'fresh' : result.status === 'failed' ? 'failed' : undefined,
+                relationshipStatus: result.status === 'done' ? 'unknown' : undefined,
+                lastAction: 'auto_unfriend',
+                lastActionStatus: result.status === 'done' ? 'success' : result.status,
+                lastActionMessage: result.message,
+              })
+
+              await updateRuntime(
+                {
+                  processedTargets: runtime.processedTargets + 1,
+                  successCount: runtime.successCount + (result.status === 'done' ? 1 : 0),
+                  failedCount: runtime.failedCount + (result.status === 'failed' ? 1 : 0),
+                  skippedCount: runtime.skippedCount + (result.status === 'skipped' ? 1 : 0),
+                  currentAction: 'auto_unfriend',
+                  currentLabel: result.message,
+                },
+                {
+                  currentGroupName: targetProfile.profileName,
+                  currentGroupCode: targetProfile.profileId,
+                }
+              )
+
+              await humanDelay(campaign.maxDelayMs)
+            }
+          })
+
+          activeBatches = Math.max(0, activeBatches - 1)
+          completedBatches++
+          await updateRuntime(
+            {
+              runningCount: activeBatches,
+              currentAction: 'auto_unfriend',
               currentLabel: `Batch akun ${batchNumber}/${assignments.length} selesai.`,
             },
             {

@@ -1,9 +1,9 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   $schema: 'https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json',
-  appId: 'facebook-automation',
+  appId: 'chunk-pipit',
   asar: true,
-  productName: 'Facebook Automation',
+  productName: 'Chunk Pipit',
   icon: 'public/logo.png',
   directories: {
     output: 'release/${version}',

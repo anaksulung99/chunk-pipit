@@ -16,19 +16,19 @@ const currentUser = computed(() => page.props.user ?? null);
 
 <template>
   <div
-    class="flex min-h-screen flex-col overflow-hidden bg-background text-neutral-900 dark:text-neutral-50"
+    class="flex h-screen flex-col overflow-hidden bg-background text-neutral-900 dark:text-neutral-50"
   >
     <AdminHeader :user="currentUser" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
 
-    <div class="relative flex flex-1 overflow-hidden">
+    <div class="relative flex min-h-0 flex-1 overflow-hidden">
       <AdminSidebar :open="sidebarOpen" @close="sidebarOpen = false" />
 
       <div
-        class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-3 pt-0 sm:p-4 sm:pt-0 bg-neutral-100 dark:bg-neutral-900"
+        class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 bg-neutral-100 p-3 pt-0 dark:bg-neutral-900 sm:p-4 sm:pt-0"
       >
         <div class="flex min-h-0 min-w-0 w-full flex-1 flex-col">
           <div
-            class="mx-auto min-h-0 min-w-0 w-full max-w-360 flex-1 space-y-6 overflow-x-hidden overflow-y-auto p-3 sm:p-6 max-h-[calc(100vh-100px)]"
+            class="mx-auto min-h-0 min-w-0 w-full max-w-360 flex-1 space-y-6 overflow-x-hidden overflow-y-auto p-3 sm:p-6"
           >
             <div class="flex min-w-0 flex-col gap-4 md:flex-row md:justify-between">
               <div class="flex min-w-0 flex-col justify-start text-start">
@@ -54,7 +54,7 @@ const currentUser = computed(() => page.props.user ?? null);
         <footer
           class="border-t border-border px-4 py-1.5 text-center text-xs text-muted-foreground sm:px-6"
         >
-          © {{ new Date().getFullYear() }} FB Automation. Seluruh hak cipta dilindungi.
+          © {{ new Date().getFullYear() }} Chunk Pipit. Seluruh hak cipta dilindungi.
         </footer>
       </div>
     </div>

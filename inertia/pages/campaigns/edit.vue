@@ -89,6 +89,8 @@ const props = defineProps<{
   profileTagOptions: string[];
 }>();
 
+const errorMessage = ref<string | null>(null);
+
 const form = useForm({
   name: props.campaign.name,
   type: props.campaign.type,
@@ -142,8 +144,20 @@ const needsGroups = computed(
 const needsProfiles = computed(
   () =>
     (form.type === "auto_add_friend" && form.config.addFriendType === "profile") ||
-    form.type === "auto_invite"
+    form.type === "auto_invite" ||
+    form.type === "auto_unfriend"
 );
+const needsMaxTargets = computed(
+  () => form.type === "scrape_group" || form.type === "scrape_profile"
+);
+const needCaption = computed(
+  () =>
+    form.type === "auto_comment" ||
+    form.type === "auto_post" ||
+    form.type === "auto_inbox" ||
+    form.type === "auto_share"
+);
+
 const groupSearch = ref("");
 const eligibleGroups = computed(() => {
   return props.groups.filter((group) => {
@@ -214,13 +228,32 @@ const fieldClass =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring";
 
 function submit() {
+  errorMessage.value = null;
   form
     .transform((data) => ({
       ...data,
       fingerprintId: data.fingerprintId || undefined,
       maxTargets: data.maxTargets || undefined,
     }))
-    .patch(`/campaigns/${props.campaign.id}`, { preserveScroll: true });
+    .patch(`/campaigns/${props.campaign.id}`, {
+      preserveScroll: true,
+      onError: (errors) => {
+        console.log("errors:", errors);
+        errorMessage.value = Object.values(errors).join("\n");
+      },
+      onFlash: (flash) => {
+        console.log("flash:", flash);
+      },
+      onFinish: (values) => {
+        if (values.errorBag) {
+          errorMessage.value = values.errorBag;
+        }
+      },
+    });
+
+  setTimeout(() => {
+    errorMessage.value = null;
+  }, 3000);
 }
 
 const typeOptions = [
@@ -295,11 +328,161 @@ const typeOptions = [
     active: true,
   },
 ];
+const groupTypeOptions = [
+  {
+    label: "Public",
+    value: "public",
+    active: true,
+  },
+  {
+    label: "Private",
+    value: "private",
+    active: true,
+  },
+  {
+    label: "Both",
+    value: "both",
+    active: true,
+  },
+];
+const scrapeProfileTypeOptions = [
+  {
+    label: "Friend",
+    value: "friend",
+    active: true,
+  },
+  {
+    label: "Group Member",
+    value: "group_member",
+    active: true,
+  },
+  {
+    label: "Page Profile Follower",
+    value: "page_profile_follower",
+    active: true,
+  },
+  {
+    label: "Engagement Post",
+    value: "engagement_post",
+    active: true,
+  },
+];
+const addFriendTypeOptions = [
+  {
+    label: "Profile",
+    value: "profile",
+    active: true,
+  },
+  {
+    label: "Group Member",
+    value: "group",
+    active: true,
+  },
+  {
+    label: "Any Facebook URL",
+    value: "any_facebook_url",
+    active: true,
+  },
+];
+
+const inviteTypeOptions = [
+  {
+    label: "Group",
+    value: "group",
+    active: true,
+  },
+  {
+    label: "Page Follower",
+    value: "page_follower",
+    active: true,
+  },
+  {
+    label: "Event",
+    value: "event",
+    active: true,
+  },
+];
+const postTypeOptions = [
+  {
+    label: "Group",
+    value: "group",
+    active: true,
+  },
+  {
+    label: "Fanspage",
+    value: "fanspage",
+    active: true,
+  },
+  {
+    label: "Event",
+    value: "event",
+    active: true,
+  },
+  {
+    label: "Friend",
+    value: "friend",
+    active: true,
+  },
+];
+const inboxTypeOptions = [
+  {
+    label: "Friend",
+    value: "friend",
+    active: true,
+  },
+  {
+    label: "Fanspage",
+    value: "fanspage",
+    active: true,
+  },
+];
+const deleteTypeOptions = [
+  {
+    label: "Post",
+    value: "post",
+    active: true,
+  },
+  {
+    label: "Comment",
+    value: "comment",
+    active: true,
+  },
+];
+const confirmTypeOptions = [
+  {
+    label: "Friend",
+    value: "friend",
+    active: true,
+  },
+  {
+    label: "Group",
+    value: "group",
+    active: true,
+  },
+];
+const createTypeOptions = [
+  {
+    label: "Group",
+    value: "group",
+    active: true,
+  },
+  {
+    label: "Fanspage",
+    value: "fanspage",
+    active: true,
+  },
+  {
+    label: "Event",
+    value: "event",
+    active: true,
+  },
+];
 </script>
 
 <template>
   <Head :title="`Edit ${campaign.name}`" />
   <App title="Edit Campaign" :description="`Perbarui konfigurasi ${campaign.name}.`">
+    <AlertMessage v-if="errorMessage" type="error" :message="errorMessage" />
     <div
       v-if="campaign.status === 'running'"
       class="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300"
@@ -355,10 +538,6 @@ const typeOptions = [
               <label class="mb-1 block text-sm font-medium">URL Target</label>
               <input v-model="form.config.url" :class="fieldClass" />
             </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium">Caption</label>
-              <textarea v-model="form.config.caption" rows="3" :class="fieldClass" />
-            </div>
             <label class="flex items-center gap-2 text-sm">
               <input v-model="form.config.skipPrivateNotJoined" type="checkbox" />
               Skip group private yang belum di-join
@@ -386,15 +565,6 @@ const typeOptions = [
               <input v-model="form.config.friendProfileUrl" :class="fieldClass" />
             </div>
             <div>
-              <label class="mb-1 block text-sm font-medium">Max Group di-scrape</label>
-              <input
-                v-model.number="form.maxTargets"
-                type="number"
-                min="1"
-                :class="fieldClass"
-              />
-            </div>
-            <div>
               <label class="mb-1 block text-sm font-medium"
                 >Label Kelompok Hasil Scrape</label
               >
@@ -409,31 +579,45 @@ const typeOptions = [
             </div>
           </template>
 
+          <template v-else-if="form.type === 'auto_join'">
+            <label class="mb-1 block text-sm font-medium">Batas Join / Hari</label>
+            <input
+              v-model.number="form.config.dailyJoinLimit"
+              type="number"
+              min="1"
+              max="200"
+              :class="fieldClass"
+            />
+          </template>
+
           <template v-else-if="form.type === 'scrape_profile'">
             <div>
               <label class="mb-1 block text-sm font-medium">Tipe Scrape Profile</label>
               <select v-model="form.config.scrapeProfileType" :class="fieldClass">
-                <option value="group_member">Member Group</option>
-                <option value="page_profile_follower">Follower Halaman</option>
-                <option value="friend">Friend / Teman</option>
-                <option value="engagement_post">Engagement Post</option>
+                <option
+                  v-for="st in scrapeProfileTypeOptions"
+                  :key="st.value"
+                  :value="st.value"
+                >
+                  {{ st.label }}
+                </option>
               </select>
             </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium">URL Halaman / Target</label>
+            <div
+              v-if="
+                form.config.scrapeProfileType === 'friend' ||
+                form.config.scrapeProfileType === 'engagement_post' ||
+                form.config.scrapeProfileType === 'page_profile_follower'
+              "
+            >
+              <label class="mb-1 block text-sm font-medium">
+                URL Profil Teman, Halaman Atau Postingan
+              </label>
               <input
                 v-model="form.config.pageUrl"
+                type="url"
                 :class="fieldClass"
-                placeholder="https://facebook.com/..."
-              />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium">Max Profile di-scrape</label>
-              <input
-                v-model.number="form.maxTargets"
-                type="number"
-                min="1"
-                :class="fieldClass"
+                placeholder="https://facebook.com/username"
               />
             </div>
             <div>
@@ -468,17 +652,22 @@ const typeOptions = [
             <div>
               <label class="mb-1 block text-sm font-medium">Tipe Add Friend</label>
               <select v-model="form.config.addFriendType" :class="fieldClass">
-                <option value="group">By Group</option>
-                <option value="profile">By Profile Pool</option>
-                <option value="any_facebook_url">By Any Facebook URL</option>
+                <option
+                  v-for="st in addFriendTypeOptions"
+                  :key="st.value"
+                  :value="st.value"
+                >
+                  {{ st.label }}
+                </option>
               </select>
             </div>
             <div v-if="form.config.addFriendType === 'any_facebook_url'">
-              <label class="mb-1 block text-sm font-medium">URL Facebook</label>
+              <label class="mb-1 block text-sm font-medium"> URL Facebook URL </label>
               <input
                 v-model="form.config.anyFacebookUrl"
+                type="url"
                 :class="fieldClass"
-                placeholder="https://facebook.com/..."
+                placeholder="https://facebook.com/username"
               />
             </div>
             <div
@@ -501,13 +690,53 @@ const typeOptions = [
             </div>
           </template>
 
+          <template v-if="form.type === 'auto_like'">
+            <div>
+              <label class="mb-1 block text-sm font-medium">URL Target</label>
+              <input
+                v-model="form.config.url"
+                type="url"
+                :class="fieldClass"
+                placeholder="https://facebook.com/..."
+              />
+            </div>
+          </template>
+
+          <template v-if="form.type === 'auto_comment'">
+            <div>
+              <label class="mb-1 block text-sm font-medium">Tipe Comment</label>
+              <select v-model="form.config.commentType" :class="fieldClass">
+                <option
+                  v-for="option in deleteTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium">URL Target</label>
+              <input
+                v-model="form.config.url"
+                type="url"
+                :class="fieldClass"
+                placeholder="https://facebook.com/..."
+              />
+            </div>
+          </template>
+
           <template v-else-if="form.type === 'auto_invite'">
             <div>
               <label class="mb-1 block text-sm font-medium">Tipe Invite</label>
               <select v-model="form.config.inviteType" :class="fieldClass">
-                <option value="group">Group</option>
-                <option value="page_follower">Page Follower</option>
-                <option value="event">Event</option>
+                <option
+                  v-for="option in inviteTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
               </select>
             </div>
             <div>
@@ -524,43 +753,133 @@ const typeOptions = [
             </div>
           </template>
 
-          <template v-else-if="form.type === 'auto_confirm'">
+          <template v-else-if="form.type === 'auto_unfriend'">
+            <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
+              Auto Unfriend memakai target dari profile pool yang dipilih di panel bawah.
+              Cocok untuk membersihkan teman yang sudah tidak ingin dipertahankan.
+            </div>
+          </template>
+
+          <template v-if="form.type === 'auto_post'">
             <div>
-              <label class="mb-1 block text-sm font-medium">Tipe Confirm</label>
-              <select v-model="form.config.confirmType" :class="fieldClass">
-                <option value="friend">Friend</option>
-                <option value="group">Group</option>
+              <label class="mb-1 block text-sm font-medium">Tipe Post</label>
+              <select v-model="form.config.postType" :class="fieldClass">
+                <option
+                  v-for="option in postTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
               </select>
             </div>
           </template>
 
-          <div v-else-if="form.type === 'auto_join'">
-            <label class="mb-1 block text-sm font-medium">Batas Join / Hari</label>
-            <input
-              v-model.number="form.config.dailyJoinLimit"
-              type="number"
-              min="1"
-              max="200"
-              :class="fieldClass"
-            />
-          </div>
+          <template v-if="form.type === 'auto_inbox'">
+            <div>
+              <label class="mb-1 block text-sm font-medium">Tipe Inbox</label>
+              <select v-model="form.config.inboxType" :class="fieldClass">
+                <option
+                  v-for="option in inboxTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+          </template>
 
-          <div v-if="form.type !== 'auto_join'">
+          <template v-if="form.type === 'auto_delete'">
+            <div>
+              <label class="mb-1 block text-sm font-medium">Tipe Delete</label>
+              <select v-model="form.config.deleteType" :class="fieldClass">
+                <option
+                  v-for="option in deleteTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+          </template>
+
+          <template v-else-if="form.type === 'auto_confirm'">
+            <div>
+              <label class="mb-1 block text-sm font-medium">Tipe Confirm</label>
+              <select v-model="form.config.confirmType" :class="fieldClass">
+                <option
+                  v-for="option in confirmTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+          </template>
+
+          <template v-if="form.type === 'auto_create'">
+            <div>
+              <label class="mb-1 block text-sm font-medium">Tipe Create</label>
+              <select v-model="form.config.createType" :class="fieldClass">
+                <option
+                  v-for="option in createTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+          </template>
+
+          <div v-if="form.type === 'scrape_group' || form.type === 'auto_share'">
             <label class="mb-1 block text-sm font-medium">Target Tipe Group</label>
             <select v-model="form.targetGroupType" :class="fieldClass">
-              <option value="public">Public</option>
-              <option value="private">Private</option>
+              <option v-for="gt in groupTypeOptions" :key="gt.value" :value="gt.value">
+                {{ gt.label }}
+              </option>
               <option value="both">Both</option>
             </select>
           </div>
 
-          <div class="flex flex-wrap gap-4">
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="form.headless" type="checkbox" /> Headless Mode
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="form.advanceMode" type="checkbox" /> Advance Mode
-            </label>
+          <div v-if="needCaption">
+            <label class="mb-1 block text-sm font-medium">Caption (opsional)</label>
+            <textarea
+              v-model="form.config.caption"
+              rows="3"
+              :class="fieldClass"
+              placeholder="Teks promosi…"
+            />
+          </div>
+
+          <div v-if="needsMaxTargets">
+            <label class="mb-1 block text-sm font-medium">Max ID untuk di-scrape</label>
+            <input
+              v-model.number="form.maxTargets"
+              type="number"
+              :class="fieldClass"
+              placeholder="100"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex flex-wrap gap-4">
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="form.headless" type="checkbox" /> Headless Mode
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="form.advanceMode" type="checkbox" /> Advance Mode
+              </label>
+            </div>
+            <AlertMessage
+              v-if="!form.headless"
+              type="warning"
+              message="Jika Headless Mode tidak diaktifkan, maka: Virtual browser akan ditampilkan. Pastikan perangkat Anda memiliki RAM
+                cukup."
+            />
           </div>
         </section>
 
@@ -618,7 +937,12 @@ const typeOptions = [
               :key="group.id"
               class="flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted"
             >
-              <input v-model="form.groupIds" type="checkbox" :value="group.id" />
+              <input
+                v-model="form.groupIds"
+                type="checkbox"
+                :value="group.id"
+                class="size-4 accent-primary"
+              />
               <span class="font-mono text-xs">{{ group.groupId }}</span>
               <span class="truncate text-muted-foreground">{{ group.groupName }}</span>
               <span v-if="group.tags.length" class="text-[10px] text-muted-foreground">

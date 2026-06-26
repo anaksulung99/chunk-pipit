@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { Head, useForm, usePage } from "@inertiajs/vue3";
+import { router } from "@inertiajs/vue3";
 import {
   AlertCircle,
   Bell,
@@ -150,7 +151,9 @@ const form = useForm({
 
 const activeAction = ref<"save" | "test" | null>(null);
 const selectedChannel = computed(() =>
-  form.enableNotification ? channelOptions.find((item) => item.value === form.typeNotification) : null
+  form.enableNotification
+    ? channelOptions.find((item) => item.value === form.typeNotification)
+    : null
 );
 const activeEventLabels = computed(() =>
   form.notificationEvents.map((item) => eventLabelMap[item] ?? item)
@@ -185,7 +188,7 @@ const previewEvent = computed(() => ({
 const previewSubject = computed(() => "[SUCCESS] Test Notification");
 const previewMessage = computed(() => {
   const lines = [
-    "FB Automation Notification",
+    "Chunk Pipit Notification",
     "",
     `Campaign      : ${previewEvent.value.campaignName}`,
     `Type          : ${previewEvent.value.campaignType}`,
@@ -222,7 +225,9 @@ const previewTarget = computed(() => {
   }
 
   if (form.typeNotification === "telegram") {
-    const thread = form.telegramConfig.threadId ? `, Thread ID ${form.telegramConfig.threadId}` : "";
+    const thread = form.telegramConfig.threadId
+      ? `, Thread ID ${form.telegramConfig.threadId}`
+      : "";
     return form.telegramConfig.chatId
       ? `Telegram Chat ID ${form.telegramConfig.chatId}${thread}`
       : "Telegram belum memiliki Chat ID.";
@@ -238,8 +243,8 @@ const previewTarget = computed(() => {
     return form.slackConfig.channel
       ? `Slack channel ${form.slackConfig.channel}`
       : form.slackConfig.webhookUrl
-        ? "Slack webhook siap dipakai tanpa channel override."
-        : "Slack webhook belum diisi.";
+      ? "Slack webhook siap dipakai tanpa channel override."
+      : "Slack webhook belum diisi.";
   }
 
   return form.webhookUrl ? `Webhook ${form.webhookUrl}` : "Webhook URL belum diisi.";
@@ -253,6 +258,7 @@ function submit() {
     },
     onFinish: () => {
       activeAction.value = null;
+      router.reload();
     },
   });
 }
@@ -265,6 +271,7 @@ function testNotification() {
     },
     onFinish: () => {
       activeAction.value = null;
+      router.reload();
     },
   });
 }
@@ -316,8 +323,8 @@ function toggleEvent(eventKey: NotificationEventKey) {
           <div class="space-y-1">
             <h3 class="text-lg font-semibold text-foreground">Private Notification</h3>
             <p class="text-sm text-muted-foreground">
-              Konfigurasi ini dipakai untuk notifikasi tambahan di luar aplikasi, seperti laporan
-              success, failed, atau event lain dari campaign worker.
+              Konfigurasi ini dipakai untuk notifikasi tambahan di luar aplikasi, seperti
+              laporan success, failed, atau event lain dari campaign worker.
             </p>
           </div>
         </div>
@@ -353,7 +360,11 @@ function toggleEvent(eventKey: NotificationEventKey) {
                 class="bg-input"
               >
                 <option :value="null">Pilih channel notifikasi</option>
-                <option v-for="item in channelOptions" :key="item.value" :value="item.value">
+                <option
+                  v-for="item in channelOptions"
+                  :key="item.value"
+                  :value="item.value"
+                >
                   {{ item.label }}
                 </option>
               </select>
@@ -369,15 +380,13 @@ function toggleEvent(eventKey: NotificationEventKey) {
               :key="item.value"
               type="button"
               :disabled="!form.enableNotification || form.processing"
-              :class="
-                [
-                  'rounded-lg border p-4 text-left transition-colors',
-                  form.typeNotification === item.value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:bg-muted/40',
-                  (!form.enableNotification || form.processing) && 'opacity-60',
-                ]
-              "
+              :class="[
+                'rounded-lg border p-4 text-left transition-colors',
+                form.typeNotification === item.value
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/40',
+                (!form.enableNotification || form.processing) && 'opacity-60',
+              ]"
               @click="form.typeNotification = item.value"
             >
               <component :is="item.icon" class="size-5 text-primary" />
@@ -393,7 +402,8 @@ function toggleEvent(eventKey: NotificationEventKey) {
             <div class="space-y-1">
               <h4 class="font-medium text-foreground">Event Notification</h4>
               <p class="text-sm text-muted-foreground">
-                Pilih event worker mana saja yang boleh dikirim ke channel private notification.
+                Pilih event worker mana saja yang boleh dikirim ke channel private
+                notification.
               </p>
             </div>
             <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -440,7 +450,10 @@ function toggleEvent(eventKey: NotificationEventKey) {
                   :disabled="form.processing"
                   class="bg-input"
                 />
-                <p v-if="form.errors['telegramConfig.botToken']" class="text-destructive text-sm">
+                <p
+                  v-if="form.errors['telegramConfig.botToken']"
+                  class="text-destructive text-sm"
+                >
                   {{ form.errors["telegramConfig.botToken"] }}
                 </p>
               </div>
@@ -485,7 +498,9 @@ function toggleEvent(eventKey: NotificationEventKey) {
             </div>
             <div class="grid gap-4 md:grid-cols-2">
               <div class="grid gap-2">
-                <label for="smtpHost" class="text-sm font-medium text-foreground">SMTP Host</label>
+                <label for="smtpHost" class="text-sm font-medium text-foreground"
+                  >SMTP Host</label
+                >
                 <input
                   id="smtpHost"
                   v-model="form.emailConfig.smtpHost"
@@ -496,7 +511,9 @@ function toggleEvent(eventKey: NotificationEventKey) {
                 />
               </div>
               <div class="grid gap-2">
-                <label for="smtpPort" class="text-sm font-medium text-foreground">SMTP Port</label>
+                <label for="smtpPort" class="text-sm font-medium text-foreground"
+                  >SMTP Port</label
+                >
                 <input
                   id="smtpPort"
                   v-model.number="form.emailConfig.smtpPort"
@@ -560,17 +577,21 @@ function toggleEvent(eventKey: NotificationEventKey) {
                 />
               </div>
               <div class="grid gap-2">
-                <label for="fromName" class="text-sm font-medium text-foreground">From Name</label>
+                <label for="fromName" class="text-sm font-medium text-foreground"
+                  >From Name</label
+                >
                 <input
                   id="fromName"
                   v-model="form.emailConfig.fromName"
                   type="text"
-                  placeholder="FB Automation"
+                  placeholder="Chunk Pipit"
                   :disabled="form.processing"
                   class="bg-input"
                 />
               </div>
-              <div class="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5">
+              <div
+                class="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5"
+              >
                 <input
                   id="smtpSecure"
                   v-model="form.emailConfig.smtpSecure"
@@ -630,7 +651,7 @@ function toggleEvent(eventKey: NotificationEventKey) {
                   id="slackUsername"
                   v-model="form.slackConfig.username"
                   type="text"
-                  placeholder="FB Automation Bot"
+                  placeholder="Chunk Pipit Bot"
                   :disabled="form.processing"
                   class="bg-input"
                 />
@@ -645,7 +666,8 @@ function toggleEvent(eventKey: NotificationEventKey) {
             <div class="space-y-1">
               <h4 class="font-medium text-foreground">Custom Webhook URL</h4>
               <p class="text-sm text-muted-foreground">
-                Endpoint ini nantinya bisa menerima payload event campaign worker secara realtime.
+                Endpoint ini nantinya bisa menerima payload event campaign worker secara
+                realtime.
               </p>
             </div>
             <div class="grid gap-2">
@@ -678,7 +700,8 @@ function toggleEvent(eventKey: NotificationEventKey) {
               }}
             </p>
             <p v-if="form.enableNotification" class="mt-2 text-xs text-muted-foreground">
-              Event aktif: {{ activeEventLabels.length ? activeEventLabels.join(", ") : "belum ada" }}
+              Event aktif:
+              {{ activeEventLabels.length ? activeEventLabels.join(", ") : "belum ada" }}
             </p>
           </div>
 
@@ -686,7 +709,9 @@ function toggleEvent(eventKey: NotificationEventKey) {
             <Button
               type="button"
               variant="outline"
-              :disabled="form.processing || !form.enableNotification || !form.typeNotification"
+              :disabled="
+                form.processing || !form.enableNotification || !form.typeNotification
+              "
               @click="testNotification"
             >
               <Loader2 v-if="activeAction === 'test'" class="animate-spin size-4" />
@@ -709,10 +734,12 @@ function toggleEvent(eventKey: NotificationEventKey) {
             class="rounded-lg border border-dashed border-border bg-muted/15 p-4 space-y-3"
           >
             <div class="space-y-1">
-              <div class="text-sm font-medium text-foreground">Preview Test Notification</div>
+              <div class="text-sm font-medium text-foreground">
+                Preview Test Notification
+              </div>
               <p class="text-xs text-muted-foreground">
-                Contoh detail yang akan dikirim saat Anda menekan tombol test. Telegram memakai
-                isi message, sedangkan webhook/email/slack juga membawa subject.
+                Contoh detail yang akan dikirim saat Anda menekan tombol test. Telegram
+                memakai isi message, sedangkan webhook/email/slack juga membawa subject.
               </p>
             </div>
             <div class="grid gap-2 text-xs text-muted-foreground">
@@ -722,18 +749,24 @@ function toggleEvent(eventKey: NotificationEventKey) {
               </p>
               <p>
                 Event contoh:
-                <span class="font-medium text-foreground">{{ eventLabelMap.campaign_start }}</span>
+                <span class="font-medium text-foreground">{{
+                  eventLabelMap.campaign_start
+                }}</span>
               </p>
               <p>
                 Event aktif:
                 <span class="font-medium text-foreground">
-                  {{ activeEventLabels.length ? activeEventLabels.join(", ") : "belum ada" }}
+                  {{
+                    activeEventLabels.length ? activeEventLabels.join(", ") : "belum ada"
+                  }}
                 </span>
               </p>
             </div>
             <div class="grid gap-3 xl:grid-cols-2">
               <div class="space-y-2">
-                <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <div
+                  class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                >
                   Message Preview
                 </div>
                 <pre
@@ -744,7 +777,9 @@ function toggleEvent(eventKey: NotificationEventKey) {
                 v-if="form.typeNotification && form.typeNotification !== 'telegram'"
                 class="space-y-2"
               >
-                <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <div
+                  class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                >
                   Payload Preview
                 </div>
                 <pre

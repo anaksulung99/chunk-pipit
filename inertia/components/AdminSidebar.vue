@@ -111,7 +111,7 @@ const bottomNavItems: AdminNavItem[] = [
   </Transition>
 
   <aside
-    class="absolute inset-y-0 left-0 z-40 flex w-20 shrink-0 flex-col transition-transform duration-200 motion-reduce:transition-none lg:static lg:translate-x-0 bg-background border-r border-neutral-300 dark:border-neutral-700 px-4 sm:px-6 shadow-md"
+    class="absolute inset-y-0 left-0 z-40 flex h-full w-20 shrink-0 flex-col border-r border-neutral-300 bg-background px-4 shadow-md transition-transform duration-200 motion-reduce:transition-none dark:border-neutral-700 sm:px-6 lg:static lg:translate-x-0"
     :class="open ? 'translate-x-0' : '-translate-x-full'"
   >
     <nav class="flex flex-1 flex-col items-center gap-2 overflow-y-auto py-4">

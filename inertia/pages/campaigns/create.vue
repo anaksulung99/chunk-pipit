@@ -94,10 +94,18 @@ const needsGroups = computed(
 const needsProfiles = computed(
   () =>
     (form.type === "auto_add_friend" && form.config.addFriendType === "profile") ||
-    form.type === "auto_invite"
+    form.type === "auto_invite" ||
+    form.type === "auto_unfriend"
 );
 const needsMaxTargets = computed(
   () => form.type === "scrape_group" || form.type === "scrape_profile"
+);
+const needCaption = computed(
+  () =>
+    form.type === "auto_comment" ||
+    form.type === "auto_post" ||
+    form.type === "auto_inbox" ||
+    form.type === "auto_share"
 );
 
 const groupSearch = ref("");
@@ -179,7 +187,15 @@ function submit() {
       onFlash: (flash) => {
         console.log("flash:", flash);
       },
+      onFinish: (values) => {
+        if (values.errorBag) {
+          errorMessage.value = values.errorBag;
+        }
+      },
     });
+  setTimeout(() => {
+    errorMessage.value = null;
+  }, 3000);
 }
 
 const fieldClass =
@@ -480,15 +496,6 @@ const createTypeOptions = [
                 placeholder="https://s.shopee.co.id/… atau URL postingan FB"
               />
             </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium">Caption (opsional)</label>
-              <textarea
-                v-model="form.config.caption"
-                rows="3"
-                :class="fieldClass"
-                placeholder="Teks promosi…"
-              />
-            </div>
             <label class="flex items-center gap-2 text-sm">
               <input
                 v-model="form.config.skipPrivateNotJoined"
@@ -601,8 +608,22 @@ const createTypeOptions = [
                 :class="fieldClass"
               />
               <p class="mt-1 text-xs text-muted-foreground">
-                Isi `0` agar profile tetap masuk pool meski friend count belum terbaca saat scrape awal.
+                Isi `0` agar profile tetap masuk pool meski friend count belum terbaca
+                saat scrape awal.
               </p>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium"
+                >Label Profile Hasil Scrape</label
+              >
+              <TagMultiSelect
+                v-model="form.config.profileTags"
+                :options="props.profileTagOptions"
+                label="Pilih atau buat label profile"
+                placeholder="Cari label profile hasil scrape..."
+                helper="Label ini ditempel ke profile hasil scrape agar nanti mudah dipakai di auto add friend."
+                empty-label="Belum ada label yang cocok. Tambah label baru dari panel kanan."
+              />
             </div>
           </template>
 
@@ -629,7 +650,12 @@ const createTypeOptions = [
                 placeholder="https://facebook.com/username"
               />
             </div>
-            <div v-if="form.config.addFriendType === 'profile' || form.config.addFriendType === 'group'">
+            <div
+              v-if="
+                form.config.addFriendType === 'profile' ||
+                form.config.addFriendType === 'group'
+              "
+            >
               <label class="mb-1 block text-sm font-medium">Minimum Friend Count</label>
               <input
                 v-model.number="form.config.minFriendCount"
@@ -638,7 +664,8 @@ const createTypeOptions = [
                 :class="fieldClass"
               />
               <p class="mt-1 text-xs text-muted-foreground">
-                Isi `0` agar target profile tidak otomatis gugur saat metadata friend belum lengkap.
+                Isi `0` agar target profile tidak otomatis gugur saat metadata friend
+                belum lengkap.
               </p>
             </div>
           </template>
@@ -704,6 +731,13 @@ const createTypeOptions = [
                 Isi URL group, halaman, atau event yang akan menerima invite dari profile
                 pool terpilih.
               </p>
+            </div>
+          </template>
+
+          <template v-if="form.type === 'auto_unfriend'">
+            <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
+              Auto Unfriend memakai target dari profile pool yang dipilih di panel bawah.
+              Cocok untuk membersihkan teman yang sudah tidak ingin dipertahankan.
             </div>
           </template>
 
@@ -792,6 +826,16 @@ const createTypeOptions = [
             </select>
           </div>
 
+          <div v-if="needCaption">
+            <label class="mb-1 block text-sm font-medium">Caption (opsional)</label>
+            <textarea
+              v-model="form.config.caption"
+              rows="3"
+              :class="fieldClass"
+              placeholder="Teks promosi…"
+            />
+          </div>
+
           <div v-if="needsMaxTargets">
             <label class="mb-1 block text-sm font-medium">Max ID untuk di-scrape</label>
             <input
@@ -802,23 +846,31 @@ const createTypeOptions = [
             />
           </div>
 
-          <div class="flex flex-wrap gap-4">
-            <label class="flex items-center gap-2 text-sm">
-              <input
-                v-model="form.headless"
-                type="checkbox"
-                class="size-4 accent-primary"
-              />
-              Headless Mode
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input
-                v-model="form.advanceMode"
-                type="checkbox"
-                class="size-4 accent-primary"
-              />
-              Advance Mode
-            </label>
+          <div class="space-y-2">
+            <div class="flex flex-wrap gap-4">
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  v-model="form.headless"
+                  type="checkbox"
+                  class="size-4 accent-primary"
+                />
+                Headless Mode
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  v-model="form.advanceMode"
+                  type="checkbox"
+                  class="size-4 accent-primary"
+                />
+                Advance Mode
+              </label>
+            </div>
+            <AlertMessage
+              v-if="!form.headless"
+              type="warning"
+              message="Jika Headless Mode tidak diaktifkan, maka: Virtual browser akan ditampilkan. Pastikan perangkat Anda memiliki RAM
+                cukup."
+            />
           </div>
         </div>
 

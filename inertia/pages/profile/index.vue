@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { Head, router } from '@inertiajs/vue3'
 import { Link } from '@adonisjs/inertia/vue'
 import { cn } from '~/lib/utils'
-import { Search, Tag, RefreshCcw, Trash2, Users } from '@lucide/vue'
+import { Search, Tag, RefreshCcw, Trash2, Users, Upload } from '@lucide/vue'
 import DataTable, { type DataTableColumn } from '~/components/ui/DataTable.vue'
 import Pagination from '~/components/ui/Pagination.vue'
 import BulkActionBar from '~/components/ui/BulkActionBar.vue'
@@ -61,6 +61,10 @@ const rows = computed(() => props.profiles.data)
 const meta = computed(() => props.profiles.meta)
 const selection = useTableSelection(rows)
 const bulkTagsText = ref('')
+const importFile = ref<File | null>(null)
+const importSourceType = ref('friend')
+const importTagsText = ref('')
+const importing = ref(false)
 
 const table = useDataTable({
   only: ['profiles'],
@@ -174,6 +178,35 @@ function appendTag(tag: string) {
   bulkTagsText.value = [...current, tag].join(', ')
 }
 
+function bulkImport() {
+  if (!importFile.value) {
+    alert('Pilih file CSV terlebih dahulu.')
+    return
+  }
+
+  const form = new FormData()
+  form.append('file', importFile.value)
+  form.append('sourceType', importSourceType.value)
+  if (importTagsText.value.trim()) form.append('tagsText', importTagsText.value.trim())
+
+  router.post('/profiles/import', form, {
+    forceFormData: true,
+    preserveScroll: true,
+    preserveState: false,
+    onStart: () => {
+      importing.value = true
+    },
+    onFinish: () => {
+      importing.value = false
+    },
+    onSuccess: () => {
+      importFile.value = null
+      importTagsText.value = ''
+      refresh()
+    },
+  })
+}
+
 
 const statsCard = [
   {
@@ -216,7 +249,46 @@ const statsCard = [
     description="Kelola profile hasil scrape agar siap dipakai untuk flow add friend dan invite."
   >
     <template #actions>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <label
+          class="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-muted"
+        >
+          <Upload class="size-4" />
+          <span>{{ importFile ? importFile.name : "Pilih CSV" }}</span>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            class="hidden"
+            @change="importFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
+          />
+        </label>
+        <select
+          v-model="importSourceType"
+          class="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        >
+          <option
+            v-for="source in SOURCES.filter((source) => source !== 'all')"
+            :key="source"
+            :value="source"
+          >
+            {{ source.replaceAll("_", " ") }}
+          </option>
+        </select>
+        <input
+          v-model="importTagsText"
+          type="text"
+          placeholder="default tags, pisah koma"
+          class="w-44 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+        <Button
+          variant="default"
+          size="sm"
+          :disabled="importing || !importFile"
+          @click="bulkImport"
+        >
+          <Upload class="size-4" />
+          {{ importing ? "Importing..." : "Import CSV" }}
+        </Button>
         <Button variant="outline" size="sm" @click="refresh">
           <RefreshCcw class="size-4" />
           Refresh
@@ -473,7 +545,5 @@ const statsCard = [
       @go="table.goToPage"
       @per-page="table.setPerPage"
     />
-
-
   </App>
 </template>

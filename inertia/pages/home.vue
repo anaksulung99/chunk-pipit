@@ -419,7 +419,7 @@ const topActionMax = computed(() =>
       <div
         v-for="k in kpis"
         :key="k.label"
-        class="rounded-lg border border-border bg-card p-4"
+        class="rounded-lg border border-border bg-background p-4"
       >
         <div class="flex items-center justify-between">
           <span class="text-xs text-muted-foreground">{{ k.label }}</span>
@@ -568,7 +568,7 @@ const topActionMax = computed(() =>
           <div
             v-for="row in analytics.actionBreakdown"
             :key="row.action"
-            class="space-y-1.5"
+            class="space-y-1.5 bg-background rounded-md p-2 border border-border"
           >
             <div class="flex items-center justify-between gap-3 text-sm">
               <div class="font-medium capitalize">{{ actionLabel(row.action) }}</div>
@@ -671,7 +671,7 @@ const topActionMax = computed(() =>
       </p>
     </section>
 
-    <div v-if="running.length" class="rounded-lg border border-border bg-card p-4">
+    <div v-if="running.length" class="rounded-lg border border-border bg-background p-4">
       <h3 class="mb-3 text-sm font-medium">Campaign Berjalan</h3>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Link
@@ -699,7 +699,7 @@ const topActionMax = computed(() =>
 
     <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
       <div class="space-y-4 rounded-lg border border-border bg-card p-4">
-        <div>
+        <div class="rounded-md border border-border bg-background p-1.5">
           <h3 class="mb-2 text-sm font-medium">Campaign per Status</h3>
           <div v-if="stats.campaigns.total" class="space-y-1.5">
             <div
@@ -722,7 +722,7 @@ const topActionMax = computed(() =>
           <p v-else class="text-xs text-muted-foreground">Belum ada campaign.</p>
         </div>
 
-        <div>
+        <div class="rounded-md border border-border bg-background p-1.5">
           <h3 class="mb-2 text-sm font-medium">Akun per Status</h3>
           <div v-if="stats.accounts.total" class="space-y-1.5">
             <div
@@ -745,7 +745,7 @@ const topActionMax = computed(() =>
           <p v-else class="text-xs text-muted-foreground">Belum ada akun.</p>
         </div>
 
-        <div>
+        <div class="rounded-md border border-border bg-background p-1.5">
           <h3 class="mb-2 text-sm font-medium">Proxy per Status</h3>
           <div v-if="stats.proxies.total" class="space-y-1.5">
             <div
@@ -769,7 +769,7 @@ const topActionMax = computed(() =>
         </div>
       </div>
 
-      <div class="rounded-lg border border-border bg-card p-4">
+      <div class="rounded-lg border border-border bg-background p-4">
         <h3 class="mb-2 text-sm font-medium">Aktivitas Terbaru</h3>
         <div v-if="recentLogs.length" class="space-y-1">
           <div

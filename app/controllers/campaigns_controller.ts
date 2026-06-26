@@ -33,6 +33,7 @@ type QueueWorkerStatus = {
 type CampaignLiveProgress = {
   stage: string
   stageLabel: string
+  actionLabel: string | null
   targetLabel: string
   processed: number
   total: number | null
@@ -47,11 +48,20 @@ type CampaignLiveProgress = {
   indeterminate: boolean
   currentBatch: number | null
   totalBatches: number | null
+  completedBatches: number
+  activeBatches: number
   batchLabel: string | null
   etaSeconds: number | null
+  elapsedSeconds: number | null
+  throughputPerMinute: number | null
   currentAccountLabel: string | null
   currentGroupName: string | null
+  currentTargetCode: string | null
   currentLabel: string | null
+  skippedByType: number
+  skippedByMemberCount: number
+  skippedByMissingName: number
+  skippedDuplicates: number
   updatedAt: string | null
 }
 type CampaignType =
@@ -160,10 +170,10 @@ function fallbackCampaignName(payload: {
     return 'Auto Comment · Event'
   }
   if (payload.type === 'auto_invite') {
-      if (payload.config?.inviteType === 'group') return 'Auto Invite · Group'
-      if (payload.config?.inviteType === 'page_follower') return 'Auto Invite · Page Follower'
-      if (payload.config?.inviteType === 'event') return 'Auto Invite · Event'
-      return 'Auto Invite'
+    if (payload.config?.inviteType === 'group') return 'Auto Invite · Group'
+    if (payload.config?.inviteType === 'page_follower') return 'Auto Invite · Page Follower'
+    if (payload.config?.inviteType === 'event') return 'Auto Invite · Event'
+    return 'Auto Invite'
   }
   if (payload.type === 'auto_post') {
     if (payload.config?.postType === 'group') return 'Auto Post · Group'
@@ -595,8 +605,14 @@ export default class CampaignsController {
       session.flash('error', 'Auto Like membutuhkan URL target.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_comment' && (!payload.config?.commentType || !payload.config?.url)) {
-      session.flash('error', 'Auto Comment membutuhkan tipe comment atau URL target.')
+    if (
+      payload.type === 'auto_comment' &&
+      (!payload.config?.commentType || !payload.config?.url || !payload.config?.caption)
+    ) {
+      session.flash(
+        'error',
+        'Auto Comment membutuhkan tipe comment atau URL target dan caption comment.'
+      )
       return response.redirect().back()
     }
 
@@ -608,12 +624,12 @@ export default class CampaignsController {
       session.flash('error', 'Auto Invite membutuhkan URL target invite.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_post' && !payload.config?.postType) {
-      session.flash('error', 'Auto Post membutuhkan tipe posting.')
+    if (payload.type === 'auto_post' && (!payload.config?.postType || !payload.config?.caption)) {
+      session.flash('error', 'Auto Post membutuhkan tipe posting dan caption posting.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_inbox' && !payload.config?.inboxType) {
-      session.flash('error', 'Auto Inbox membutuhkan tipe inbox.')
+    if (payload.type === 'auto_inbox' && (!payload.config?.inboxType || !payload.config?.caption)) {
+      session.flash('error', 'Auto Inbox membutuhkan tipe inbox dan caption inbox.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_delete' && !payload.config?.deleteType) {
@@ -1089,7 +1105,9 @@ export default class CampaignsController {
         config: {
           ...(campaign.config ?? {}),
           groupTags: extractCampaignGroupTags((campaign.config ?? {}) as Record<string, unknown>),
-          profileTags: extractCampaignProfileTags((campaign.config ?? {}) as Record<string, unknown>),
+          profileTags: extractCampaignProfileTags(
+            (campaign.config ?? {}) as Record<string, unknown>
+          ),
         },
         targetGroupType: campaign.targetGroupType as CampaignGroupType,
         headless: campaign.headless ?? true,
@@ -1380,6 +1398,7 @@ export default class CampaignsController {
             | 'scrape_profile'
             | 'auto_add_friend'
             | 'auto_invite'
+            | 'auto_unfriend'
             | 'auto_confirm',
           enqueuedAt: DateTime.now().toISO()!,
         })
@@ -1589,6 +1608,17 @@ export default class CampaignsController {
     )
   }
 
+  private targetTypeLabel(targetType?: string | null) {
+    return (
+      {
+        hasil_scrape: 'hasil scrape',
+        account: 'akun',
+        profile: 'profile',
+        group: 'group',
+      }[targetType ?? ''] ?? 'target'
+    )
+  }
+
   private async getCampaignProgress(
     campaignOrId: Campaign | string
   ): Promise<CampaignLiveProgress> {
@@ -1616,24 +1646,35 @@ export default class CampaignsController {
       const runtimeMeta = (runtimeState.meta ?? {}) as Record<string, unknown>
       const runtimeTotal = runtimeState.totalTargets
       const runtimeProcessed = runtimeState.processedTargets ?? 0
+      const actionLabel = this.progressActionLabel(runtimeState.currentAction)
       const runtimePercent =
         runtimeState.status === 'completed'
           ? 100
           : runtimeTotal && runtimeTotal > 0
             ? Math.max(0, Math.min(100, Math.round((runtimeProcessed / runtimeTotal) * 1000) / 10))
             : null
+      const updatedAt = runtimeState.lastTickAt?.toISO() ?? runtimeState.updatedAt?.toISO() ?? null
+      const elapsedSeconds = runtimeState.startedAt
+        ? Math.max(
+            0,
+            Math.round(
+              (runtimeState.lastTickAt ?? runtimeState.updatedAt ?? DateTime.now()).diff(
+                runtimeState.startedAt,
+                'seconds'
+              ).seconds
+            )
+          )
+        : null
+      const throughputPerMinute =
+        elapsedSeconds && elapsedSeconds > 0 && runtimeProcessed > 0
+          ? Math.round((runtimeProcessed / elapsedSeconds) * 60 * 10) / 10
+          : null
 
       return {
         stage: runtimeState.status,
         stageLabel: this.progressStageLabel(runtimeState.status),
-        targetLabel:
-          runtimeState.targetType === 'hasil_scrape'
-            ? 'hasil scrape'
-            : runtimeState.targetType === 'account'
-              ? 'akun'
-              : runtimeState.targetType === 'profile'
-                ? 'profile'
-                : 'group',
+        actionLabel,
+        targetLabel: this.targetTypeLabel(runtimeState.targetType),
         processed: runtimeProcessed,
         total: runtimeTotal,
         success: runtimeState.successCount ?? 0,
@@ -1651,20 +1692,40 @@ export default class CampaignsController {
             (runtimeState.status === 'running' && runtimePercent === null)),
         currentBatch: runtimeState.currentBatch,
         totalBatches: runtimeState.totalBatches,
+        completedBatches:
+          typeof runtimeMeta.completedBatches === 'number' ? runtimeMeta.completedBatches : 0,
+        activeBatches:
+          typeof runtimeMeta.activeBatches === 'number' ? runtimeMeta.activeBatches : 0,
         batchLabel: typeof runtimeMeta.batchLabel === 'string' ? runtimeMeta.batchLabel : null,
         etaSeconds: runtimeState.etaSeconds,
+        elapsedSeconds,
+        throughputPerMinute,
         currentAccountLabel:
           typeof runtimeMeta.currentAccountLabel === 'string'
             ? runtimeMeta.currentAccountLabel
             : null,
         currentGroupName:
           typeof runtimeMeta.currentGroupName === 'string' ? runtimeMeta.currentGroupName : null,
+        currentTargetCode:
+          typeof runtimeMeta.currentGroupCode === 'string' ? runtimeMeta.currentGroupCode : null,
         currentLabel:
           runtimeState.currentLabel ??
           (latestLog?.message?.trim() ||
             this.progressActionLabel(latestLog?.action) ||
             this.progressStageLabel(campaign.status)),
-        updatedAt: runtimeState.lastTickAt?.toISO() ?? runtimeState.updatedAt?.toISO() ?? null,
+        skippedByType:
+          typeof runtimeMeta.skippedByType === 'number' ? runtimeMeta.skippedByType : 0,
+        skippedByMemberCount:
+          typeof runtimeMeta.skippedByMemberCount === 'number'
+            ? runtimeMeta.skippedByMemberCount
+            : 0,
+        skippedByMissingName:
+          typeof runtimeMeta.skippedByMissingName === 'number'
+            ? runtimeMeta.skippedByMissingName
+            : 0,
+        skippedDuplicates:
+          typeof runtimeMeta.skippedDuplicates === 'number' ? runtimeMeta.skippedDuplicates : 0,
+        updatedAt,
       }
     }
 
@@ -1695,6 +1756,7 @@ export default class CampaignsController {
     return {
       stage: campaign.status,
       stageLabel: this.progressStageLabel(campaign.status),
+      actionLabel,
       targetLabel:
         groupBucket.total > 0
           ? 'group'
@@ -1722,11 +1784,23 @@ export default class CampaignsController {
           (campaign.status === 'running' && latestLog !== null && percent === null)),
       currentBatch: null,
       totalBatches: null,
+      completedBatches: 0,
+      activeBatches: 0,
       batchLabel: null,
       etaSeconds: null,
+      elapsedSeconds:
+        campaign.startedAt && latestLog?.createdAt
+          ? Math.max(0, Math.round(latestLog.createdAt.diff(campaign.startedAt, 'seconds').seconds))
+          : null,
+      throughputPerMinute: null,
       currentAccountLabel: null,
       currentGroupName: null,
+      currentTargetCode: null,
       currentLabel,
+      skippedByType: 0,
+      skippedByMemberCount: 0,
+      skippedByMissingName: 0,
+      skippedDuplicates: 0,
       updatedAt: latestLog?.createdAt?.toISO() ?? null,
     }
   }

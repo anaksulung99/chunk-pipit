@@ -141,6 +141,7 @@ router
     // Profiles management (owner-scoped, all activated users).
     router.get('profiles', [ProfilesController, 'index']).as('profiles.index')
     router.post('profiles/bulk', [ProfilesController, 'bulk']).as('profiles.bulk')
+    router.post('profiles/import', [ProfilesController, 'import']).as('profiles.import')
 
     // Page-scoped JSON API routes. These are consumed from authenticated Inertia pages
     // and therefore use the web session guard from this route group.
@@ -165,6 +166,9 @@ router
     // Team management (owner-scoped, all activated users).
     router.get('teams', [TeamsController, 'index']).as('teams.index')
     router.get('teams/:id', [TeamsController, 'show']).as('teams.show')
+    router
+      .get('teams/:id/export-cookies', [TeamsController, 'exportCookies'])
+      .as('teams.export-cookies')
     router.post('teams', [TeamsController, 'store']).as('teams.store')
     router.put('teams/:id/status', [TeamsController, 'setStatus']).as('teams.status')
     router.put('teams/:id/update', [TeamsController, 'update']).as('teams.update')

@@ -217,11 +217,13 @@ function healthCheck(id: string) {
 async function bulkCheck(){
   try {
     const result = await check(Array.from(selection.selected.value))
-    if(result.error.length) return toast.info(result.error.map(e => e).join('\n'))
     toast.success(`Check selesai, ${result.total} profile terpilih`)
+  } catch(error){
+    toast.error(error instanceof Error ? error.message : 'Error')
   } finally {
     showProgressModal.value = false
     selection.clear()
+    refresh()
   }
 }
 

@@ -169,7 +169,7 @@ export class PersonalNotificationService {
 
   private formatMessage(event: CampaignNotificationEvent) {
     const lines = [
-      'FB Automation Notification',
+      'Chunk Pipit Notification',
       '',
       `Campaign      : ${event.campaignName}`,
       `Type          : ${event.campaignType}`,
