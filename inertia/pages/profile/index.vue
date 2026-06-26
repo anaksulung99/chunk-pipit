@@ -55,6 +55,8 @@ const props = defineProps<{
   profileTagOptions: string[]
 }>()
 
+
+
 const rows = computed(() => props.profiles.data)
 const meta = computed(() => props.profiles.meta)
 const selection = useTableSelection(rows)
@@ -172,6 +174,7 @@ function appendTag(tag: string) {
   bulkTagsText.value = [...current, tag].join(', ')
 }
 
+
 const statsCard = [
   {
     label: 'Total Profile',
@@ -254,7 +257,7 @@ const statsCard = [
           @change="table.setFilter('source', ($event.target as HTMLSelectElement).value)"
         >
           <option v-for="source in SOURCES" :key="source" :value="source">
-            {{ source === 'all' ? 'Semua sumber' : source.replaceAll('_', ' ') }}
+            {{ source === "all" ? "Semua sumber" : source.replaceAll("_", " ") }}
           </option>
         </select>
         <select
@@ -320,6 +323,7 @@ const statsCard = [
           Kosongkan label
         </button>
       </div>
+
       <button
         type="button"
         class="rounded-md border border-red-500/40 px-2.5 py-1 text-sm text-red-500 hover:bg-red-500/10"
@@ -376,9 +380,16 @@ const statsCard = [
       </template>
       <template #cell-friend_count="{ row }">
         <div class="space-y-0.5 text-xs">
-          <div>{{ row.friendCount != null ? row.friendCount.toLocaleString('id-ID') : '—' }}</div>
+          <div>
+            {{ row.friendCount != null ? row.friendCount.toLocaleString("id-ID") : "—" }}
+          </div>
           <div class="text-muted-foreground">
-            Mutual {{ row.mutualFriendCount != null ? row.mutualFriendCount.toLocaleString('id-ID') : '—' }}
+            Mutual
+            {{
+              row.mutualFriendCount != null
+                ? row.mutualFriendCount.toLocaleString("id-ID")
+                : "—"
+            }}
           </div>
         </div>
       </template>
@@ -392,20 +403,20 @@ const statsCard = [
               )
             "
           >
-            {{ row.lifecycleStatus.replaceAll('_', ' ') }}
+            {{ row.lifecycleStatus.replaceAll("_", " ") }}
           </span>
           <div class="text-muted-foreground">
-            {{ row.relationshipStatus.replaceAll('_', ' ') }}
+            {{ row.relationshipStatus.replaceAll("_", " ") }}
           </div>
           <div v-if="row.lastAction" class="text-muted-foreground">
-            {{ row.lastAction.replaceAll('_', ' ') }}
+            {{ row.lastAction.replaceAll("_", " ") }}
             <span v-if="row.lastActionStatus">· {{ row.lastActionStatus }}</span>
           </div>
         </div>
       </template>
       <template #cell-sourceType="{ row }">
         <div class="space-y-0.5 text-xs">
-          <span class="capitalize">{{ row.sourceType.replaceAll('_', ' ') }}</span>
+          <span class="capitalize">{{ row.sourceType.replaceAll("_", " ") }}</span>
           <a
             v-if="row.sourceUrl"
             :href="row.sourceUrl"
@@ -462,5 +473,7 @@ const statsCard = [
       @go="table.goToPage"
       @per-page="table.setPerPage"
     />
+
+
   </App>
 </template>

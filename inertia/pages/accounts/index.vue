@@ -10,6 +10,15 @@ import BulkActionBar from '~/components/ui/BulkActionBar.vue'
 import { useDataTable, type TableMeta } from '~/composables/useDataTable'
 import { useTableSelection } from '~/composables/useTableSelection'
 import { Icon } from '@iconify/vue'
+import {
+  TransitionRoot,
+  TransitionChild,
+  Dialog as DialogRoot,
+  DialogPanel,
+  DialogTitle,
+  DialogDescription,
+} from '@headlessui/vue'
+import { toast } from 'vue3-toastify'
 
 type AccountRow = {
   id: string
@@ -47,6 +56,12 @@ const props = defineProps<{
   }
 }>()
 
+const {
+    showProgressModal,
+    addProgress,
+    check,
+} = useFacebookAccount()
+
 const actionUpdate = ref<{
   open: boolean
   data: AccountRow | null
@@ -62,6 +77,12 @@ const rangeDate = ref<DateRange>(
     ? [parseDate(props.filters.startDate), parseDate(props.filters.endDate)]
     : null
 )
+
+const completedProgressRef = ref(null)
+const validateProgressValue = computed(
+  () => (addProgress.current / addProgress.total) * 100 || 0
+);
+
 
 const table = useDataTable({
   only: ['accounts'],
@@ -192,6 +213,18 @@ function healthCheck(id: string) {
     onSuccess: () => refresh(),
   })
 }
+
+async function bulkCheck(){
+  try {
+    const result = await check(Array.from(selection.selected.value))
+    if(result.error.length) return toast.info(result.error.map(e => e).join('\n'))
+    toast.success(`Check selesai, ${result.total} profile terpilih`)
+  } finally {
+    showProgressModal.value = false
+    selection.clear()
+  }
+}
+
 
 const statsCard = [
   {
@@ -375,6 +408,13 @@ const statsCard = [
       </button>
       <button
         type="button"
+        class="rounded-md border border-emerald-500/40 px-2.5 py-1 text-sm text-emerald-500 hover:bg-emerald-500/10"
+        @click="bulkCheck"
+      >
+        Check
+      </button>
+      <button
+        type="button"
         class="rounded-md border border-red-500/40 px-2.5 py-1 text-sm text-red-500 hover:bg-red-500/10"
         @click="bulk('delete')"
       >
@@ -495,5 +535,104 @@ const statsCard = [
         }
       "
     />
+
+    <TransitionRoot appear :show="showProgressModal" as="template">
+      <DialogRoot
+        as="div"
+        :initial-focus="completedProgressRef"
+        class="relative z-50"
+        @close="showProgressModal = false"
+      >
+        <TransitionChild
+          as="template"
+          enter="duration-300 ease-out"
+          enter-from="opacity-0"
+          enter-to="opacity-100"
+          leave="duration-200 ease-in"
+          leave-from="opacity-100"
+          leave-to="opacity-0"
+        >
+          <div class="fixed inset-0 bg-black/25" />
+        </TransitionChild>
+
+        <div class="fixed inset-0 overflow-y-auto">
+          <div class="flex min-h-full items-center justify-center p-4 text-center">
+            <TransitionChild
+              as="template"
+              enter="duration-300 ease-out"
+              enter-from="opacity-0 scale-95"
+              enter-to="opacity-100 scale-100"
+              leave="duration-200 ease-in"
+              leave-from="opacity-100 scale-100"
+              leave-to="opacity-0 scale-95"
+            >
+              <DialogPanel
+                class="w-full max-w-md transform overflow-hidden rounded-2xl bg-card p-6 text-left align-middle shadow-xl transition-all"
+              >
+                <DialogTitle
+                  as="h3"
+                  class="text-lg font-medium leading-6 text-foreground"
+                >
+                  Check Progress
+                </DialogTitle>
+                <DialogDescription class="mt-2 text-sm text-muted-foreground">
+                  Sedang mengecek profile {{ selection.count.value }} terpilih.
+                </DialogDescription>
+
+                <div class="mt-6 space-y-4">
+                  <div class="flex items-center gap-3">
+                    <Spinner class="animate-spin" />
+                    <h3 class="font-semibold">Validating Accounts</h3>
+                  </div>
+                  <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                      <span>Progress</span>
+                      <span> {{ addProgress.current }}/{{ addProgress.total }} </span>
+                    </div>
+                    <div class="h-2 w-full rounded-full bg-background">
+                      <div
+                        class="h-2 rounded-full bg-emerald-600"
+                        :style="{ width: validateProgressValue + '%' }"
+                      ></div>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-4 gap-3 text-center">
+                    <div class="rounded-lg bg-green-600/10 p-2">
+                      <div class="font-bold text-green-600">
+                        {{ addProgress.active }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Active</div>
+                    </div>
+                    <div class="rounded-lg bg-amber-600/10 p-2">
+                      <div class="font-bold text-amber-600">
+                        {{ addProgress.checkpoint }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Checkpoint</div>
+                    </div>
+                    <div class="rounded-lg bg-muted p-2">
+                      <div class="font-bold text-muted-foreground">
+                        {{ addProgress.logged_out }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Logged Out</div>
+                    </div>
+                    <div class="rounded-lg bg-red-600/10 p-2">
+                      <div class="font-bold text-red-600">
+                        {{ addProgress.failed }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Failed</div>
+                    </div>
+                  </div>
+                  <div class="text-sm text-muted-foreground">
+                    Validating: {{ addProgress.currentProfileId || "Starting..." }}
+                  </div>
+                </div>
+
+                <button ref="completedProgressRef" class="sr-only">Close</button>
+              </DialogPanel>
+            </TransitionChild>
+          </div>
+        </div>
+      </DialogRoot>
+    </TransitionRoot>
   </App>
 </template>

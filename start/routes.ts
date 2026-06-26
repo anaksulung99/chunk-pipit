@@ -11,6 +11,7 @@ import { middleware } from '#start/kernel'
 import { controllers } from '#generated/controllers'
 import { activationThrottle } from '#start/limiter'
 import router from '@adonisjs/core/services/router'
+import User from '#models/user'
 
 // Public activation gate (device not yet activated lands here).
 router.on('/activation').renderInertia('activation/index', {}).as('activation.show')
@@ -49,6 +50,7 @@ const SessionLogsController = () => import('#controllers/session_logs_controller
 const UserProfileController = () => import('#controllers/user_profiles_controller')
 const PersonalSettingsController = () => import('#controllers/personal_settings_controller')
 const ProfilesController = () => import('#controllers/profiles_controller')
+const ApiFacebookAccountController = () => import('#controllers/api/facebook_account_controller')
 
 router
   .group(() => {
@@ -139,6 +141,12 @@ router
     // Profiles management (owner-scoped, all activated users).
     router.get('profiles', [ProfilesController, 'index']).as('profiles.index')
     router.post('profiles/bulk', [ProfilesController, 'bulk']).as('profiles.bulk')
+
+    // Page-scoped JSON API routes. These are consumed from authenticated Inertia pages
+    // and therefore use the web session guard from this route group.
+    router
+      .post('api/facebook-accounts/health-check', [ApiFacebookAccountController, 'healthCheck'])
+      .as('api.facebook-accounts.health')
   })
   .use([middleware.auth(), middleware.activation()])
 
@@ -170,3 +178,15 @@ router
     router.post('logout', [controllers.Session, 'destroy'])
   })
   .use(middleware.auth())
+
+router
+  .group(() => {
+    router.post('/users/:id/tokens', async ({ params }) => {
+      const user = await User.findOrFail(params.id)
+      const token = await User.accessTokens.create(user)
+
+      return token
+    })
+  })
+  .prefix('/api/v1')
+  .use(middleware.auth({ guards: ['api'] }))

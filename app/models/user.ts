@@ -7,6 +7,7 @@ import { compose } from '@adonisjs/core/helpers'
 import { withAuthFinder } from '@adonisjs/auth/mixins/lucid'
 import { hasOne, hasMany } from '@adonisjs/lucid/orm'
 import type { HasOne, HasMany } from '@adonisjs/lucid/types/relations'
+import { DbAccessTokensProvider, AccessToken } from '@adonisjs/auth/access_tokens'
 
 export default class User extends compose(UserSchema, withAuthFinder(hash)) {
   @hasOne(() => License)
@@ -26,4 +27,13 @@ export default class User extends compose(UserSchema, withAuthFinder(hash)) {
 
     return `${first.slice(0, 2)}`.toUpperCase()
   }
+
+  static accessTokens = DbAccessTokensProvider.forModel(User, {
+    expiresIn: '7 days',
+    prefix: 'oat_',
+    table: 'auth_access_tokens',
+    type: 'auth_token',
+    tokenSecretLength: 40,
+  })
+  currentAccessToken?: AccessToken
 }
