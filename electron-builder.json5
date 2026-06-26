@@ -1,0 +1,82 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  $schema: 'https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json',
+  appId: 'facebook-automation',
+  asar: true,
+  productName: 'Facebook Automation',
+  icon: 'public/logo.png',
+  directories: {
+    output: 'release/${version}',
+  },
+  files: ['dist', 'dist-electron', '!resources/**/*'],
+  // Sidecar bundles and app env — included for all platforms
+  extraResources: [
+    {
+      from: 'resources/sidecar',
+      to: 'sidecar',
+      filter: ['**/*'],
+    },
+    {
+      from: 'resources/app.env',
+      to: 'app.env',
+    },
+    {
+      from: 'resources/browsers',
+      to: 'browsers',
+      filter: ['**/*'],
+    },
+    {
+      from: 'resources',
+      to: '.',
+      filter: ['package.json', 'browsers.json', 'cli.js'],
+    },
+  ],
+  mac: {
+    target: ['dmg'],
+    artifactName: '${productName}-Mac-${version}-Installer.${ext}',
+    extraResources: [
+      {
+        from: 'resources/redis/darwin',
+        to: 'redis/darwin',
+        filter: ['**/*'],
+      },
+    ],
+  },
+  win: {
+    icon: 'public/favicon.ico',
+    target: [
+      {
+        target: 'nsis',
+        arch: ['x64'],
+      },
+    ],
+    artifactName: '${productName}-Windows-${version}-Setup.${ext}',
+    extraResources: [
+      {
+        from: 'resources/redis/win32',
+        to: 'redis/win32',
+        filter: ['**/*'],
+      },
+    ],
+  },
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowToChangeInstallationDirectory: true,
+    deleteAppDataOnUninstall: false,
+    installerIcon: 'public/favicon.ico',
+    uninstallerIcon: 'public/favicon.ico',
+    installerHeaderIcon: 'public/favicon.ico',
+  },
+  linux: {
+    target: ['AppImage'],
+    artifactName: '${productName}-Linux-${version}.${ext}',
+    extraResources: [
+      {
+        from: 'resources/redis/linux',
+        to: 'redis/linux',
+        filter: ['**/*'],
+      },
+    ],
+  },
+}

@@ -1,0 +1,79 @@
+<script lang="ts" setup>
+const emits = defineEmits<{
+  (e: "update:value", value?: File): void;
+}>();
+
+const active = ref(false);
+
+const props = defineProps<{
+  id?: string;
+  label?: string;
+  value?: File;
+  description?: string;
+  accept?: string;
+}>();
+
+const modelValue = useVModel(props, "value", emits, {
+  passive: true,
+});
+
+const handleFileDrop = (event: any) => {
+  active.value = false;
+  emits("update:value", (event.dataTransfer as DataTransfer).files[0]);
+};
+
+const handleFileChange = (event: Event) => {
+  emits("update:value", ((event.target as HTMLInputElement).files as FileList)[0]);
+};
+</script>
+
+<template>
+  <div class="flex flex-col">
+    <!--displayed label-->
+    <div class="flex justify-start">
+      <label v-if="props.label" :for="props.id" class="mb-3">
+        <span
+          class="w-13 text-black/60 dark:text-white/70 text-sm font-semibold leading-4 tracking-[.01rem]"
+        >
+          {{ props.label }}
+        </span>
+      </label>
+    </div>
+
+    <label
+      :for="props.id"
+      tabindex="0"
+      class="cursor-pointer w-full h-25 border border-dashed rounded-sm p-5 border-neutral-200 dark:border-neutral-500 flex justify-center items-center hover:bg-white/0 active:bg-white/0 focus:bg-white/0 outline-none focus:outline-none duration-500 transition-all"
+      :class="{
+        'bg-neutral-50/0': active,
+        'bg-neutral-50 dark:bg-neutral-700/70 dark:hover:bg-neutral-700/0 dark:focus:bg-neutral-700/0': !active,
+      }"
+      @dragover.prevent="active = true"
+      @dragenter.prevent="active = false"
+      @dragleave.prevent="active = false"
+      @dragend.prevent="active = false"
+      @drop.prevent="handleFileDrop"
+    >
+      <!--file input-->
+      <input
+        :id="props.id"
+        type="file"
+        hidden
+        name="files[]"
+        :accept="props.accept"
+        @change="handleFileChange"
+      />
+
+      <!--custom placeholder and input-->
+      <div :class="{ hidden: active }">
+        <p v-if="modelValue" class="body-2 text-black/70 dark:text-white/70">
+          {{ modelValue.name }}
+        </p>
+        <p v-else class="body-2 text-black/40 dark:text-white/70">
+          Choose a file <br />
+          or drop it here.
+        </p>
+      </div>
+    </label>
+  </div>
+</template>

@@ -1,0 +1,29 @@
+import app from '@adonisjs/core/services/app'
+import env from '#start/env'
+import { defineConfig } from '@adonisjs/lucid'
+
+const dbConfig = defineConfig({
+  connection: 'pg',
+  prettyPrintDebugQueries: true,
+  connections: {
+    pg: {
+      client: 'pg',
+      connection: {
+        connectionString: env.get('DB_URL'),
+        // host: env.get('DB_HOST'),
+        // port: env.get('DB_PORT'),
+        // user: env.get('DB_USER'),
+        // password: env.get('DB_PASSWORD'),
+        // database: env.get('DB_DATABASE'),
+        // ssl: env.get('DB_SSL') === true ? { rejectUnauthorized: true } : false,
+      },
+      migrations: {
+        naturalSort: true,
+        paths: ['database/migrations'],
+      },
+      debug: app.inDev,
+    },
+  },
+})
+
+export default dbConfig
