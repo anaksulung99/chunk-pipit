@@ -19,6 +19,7 @@ type CampaignDto = {
     friendProfileUrl?: string;
     pageUrl?: string;
     anyFacebookUrl?: string;
+    manualGroupUrl?: string;
     skipPrivateNotJoined?: boolean;
     retryFailed?: boolean;
     dailyJoinLimit?: number;
@@ -117,6 +118,7 @@ const form = useForm({
     friendProfileUrl: props.campaign.config.friendProfileUrl ?? "",
     pageUrl: props.campaign.config.pageUrl ?? "",
     anyFacebookUrl: props.campaign.config.anyFacebookUrl ?? "",
+    manualGroupUrl: props.campaign.config.manualGroupUrl ?? "",
     skipPrivateNotJoined: props.campaign.config.skipPrivateNotJoined ?? true,
     retryFailed: props.campaign.config.retryFailed ?? false,
     dailyJoinLimit: props.campaign.config.dailyJoinLimit ?? 25,
@@ -136,6 +138,7 @@ const form = useForm({
 const needsGroups = computed(
   () =>
     form.type === "auto_share" ||
+    form.type === "auto_post" ||
     form.type === "auto_join" ||
     (form.type === "scrape_profile" &&
       form.config.scrapeProfileType === "group_member") ||
@@ -226,6 +229,20 @@ const profilesMatchedBySelectedTags = computed(() => {
 
 const fieldClass =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring";
+
+const autoDeleteTargetLabel = computed(() =>
+  form.config.deleteType === "comment" ? "Permalink Comment" : "Permalink Post"
+);
+const autoDeletePlaceholder = computed(() =>
+  form.config.deleteType === "comment"
+    ? "https://www.facebook.com/groups/123/posts/456/?comment_id=789"
+    : "https://www.facebook.com/groups/123/posts/456/"
+);
+const autoDeleteHelper = computed(() =>
+  form.config.deleteType === "comment"
+    ? "Gunakan permalink comment lengkap yang masih menyimpan parameter `comment_id` agar worker bisa mengenali target dengan tepat."
+    : "Gunakan permalink post final, idealnya format `/groups/.../posts/.../`, bukan URL feed umum atau hasil pencarian."
+);
 
 function submit() {
   errorMessage.value = null;
@@ -411,17 +428,17 @@ const postTypeOptions = [
   {
     label: "Fanspage",
     value: "fanspage",
-    active: true,
+    active: false,
   },
   {
     label: "Event",
     value: "event",
-    active: true,
+    active: false,
   },
   {
     label: "Friend",
     value: "friend",
-    active: true,
+    active: false,
   },
 ];
 const inboxTypeOptions = [
@@ -433,7 +450,19 @@ const inboxTypeOptions = [
   {
     label: "Fanspage",
     value: "fanspage",
+    active: false,
+  },
+];
+const commentTypeOptions = [
+  {
+    label: "Post",
+    value: "post",
     active: true,
+  },
+  {
+    label: "Comment",
+    value: "comment",
+    active: false,
   },
 ];
 const deleteTypeOptions = [
@@ -457,7 +486,7 @@ const confirmTypeOptions = [
   {
     label: "Group",
     value: "group",
-    active: true,
+    active: false,
   },
 ];
 const createTypeOptions = [
@@ -699,6 +728,11 @@ const createTypeOptions = [
                 :class="fieldClass"
                 placeholder="https://facebook.com/..."
               />
+              <p class="mt-1 text-xs text-muted-foreground">
+                MVP <code>Auto Like</code> saat ini bekerja dari satu URL target
+                Facebook per campaign. Tiap akun yang dipilih akan mencoba memberi
+                like pada URL yang sama.
+              </p>
             </div>
           </template>
 
@@ -707,13 +741,18 @@ const createTypeOptions = [
               <label class="mb-1 block text-sm font-medium">Tipe Comment</label>
               <select v-model="form.config.commentType" :class="fieldClass">
                 <option
-                  v-for="option in deleteTypeOptions"
+                  v-for="option in commentTypeOptions"
                   :key="option.value"
                   :value="option.value"
+                  :disabled="!option.active"
                 >
-                  {{ option.label }}
+                  {{ option.label }}{{ option.active ? "" : " (Soon)" }}
                 </option>
               </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                MVP <code>Auto Comment</code> saat ini fokus ke comment langsung pada
+                URL post Facebook. Jalur reply-to-comment disiapkan di phase berikutnya.
+              </p>
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium">URL Target</label>
@@ -768,10 +807,28 @@ const createTypeOptions = [
                   v-for="option in postTypeOptions"
                   :key="option.value"
                   :value="option.value"
+                  :disabled="!option.active"
                 >
-                  {{ option.label }}
+                  {{ option.label }}{{ option.active ? "" : " (Soon)" }}
                 </option>
               </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                MVP `Auto Post` saat ini fokus ke target group dulu. Fanspage, event,
+                dan friend disiapkan di phase berikutnya.
+              </p>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium">URL Group Manual</label>
+              <input
+                v-model="form.config.manualGroupUrl"
+                type="url"
+                :class="fieldClass"
+                placeholder="https://www.facebook.com/groups/123456789"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                Opsional. Jika diisi, worker akan menambahkan 1 target group manual
+                di luar list group database atau label kelompok.
+              </p>
             </div>
           </template>
 
@@ -783,14 +840,27 @@ const createTypeOptions = [
                   v-for="option in inboxTypeOptions"
                   :key="option.value"
                   :value="option.value"
+                  :disabled="!option.active"
                 >
-                  {{ option.label }}
+                  {{ option.label }}{{ option.active ? "" : " (Soon)" }}
                 </option>
               </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                MVP `Auto Inbox` saat ini fokus ke target friend dari profile pool
+                dulu. Jalur fanspage disiapkan di phase berikutnya.
+              </p>
             </div>
           </template>
 
           <template v-if="form.type === 'auto_delete'">
+            <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
+              Auto Delete saat ini berjalan untuk 1 permalink per campaign dan paling aman
+              dieksekusi oleh akun pemilik konten.
+              <span class="block pt-1 text-xs text-amber-700 dark:text-amber-300">
+                Pastikan akun yang dipilih di panel bawah memang akun yang punya hak hapus di
+                target ini.
+              </span>
+            </div>
             <div>
               <label class="mb-1 block text-sm font-medium">Tipe Delete</label>
               <select v-model="form.config.deleteType" :class="fieldClass">
@@ -802,6 +872,29 @@ const createTypeOptions = [
                   {{ option.label }}
                 </option>
               </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Pilih <code>Post</code> untuk menghapus postingan utama, atau
+                <code>Comment</code> untuk menghapus komentar spesifik dari permalink
+                comment.
+              </p>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium">
+                {{ autoDeleteTargetLabel }}
+              </label>
+              <input
+                v-model="form.config.url"
+                type="url"
+                :class="fieldClass"
+                :placeholder="autoDeletePlaceholder"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                {{ autoDeleteHelper }}
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Foundation awal ini bekerja per URL target. Jika ingin memindah target,
+                cukup ganti permalink di sini tanpa perlu mengubah struktur campaign lain.
+              </p>
             </div>
           </template>
 
@@ -813,10 +906,16 @@ const createTypeOptions = [
                   v-for="option in confirmTypeOptions"
                   :key="option.value"
                   :value="option.value"
+                  :disabled="!option.active"
                 >
-                  {{ option.label }}
+                  {{ option.label }}{{ option.active ? "" : " (Soon)" }}
                 </option>
               </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Foundation `Auto Confirm` yang aktif sekarang fokus ke
+                <code>friend request</code> dulu. Jalur confirm tipe group masih diparkir
+                untuk phase berikutnya.
+              </p>
             </div>
           </template>
 
@@ -846,13 +945,36 @@ const createTypeOptions = [
           </div>
 
           <div v-if="needCaption">
-            <label class="mb-1 block text-sm font-medium">Caption (opsional)</label>
+            <label class="mb-1 block text-sm font-medium">
+              {{
+                form.type === "auto_inbox"
+                  ? "Template Message"
+                  : form.type === "auto_comment"
+                    ? "Comment Text"
+                    : "Caption (opsional)"
+              }}
+            </label>
             <textarea
               v-model="form.config.caption"
-              rows="3"
+              :rows="form.type === 'auto_inbox' ? 5 : 3"
               :class="fieldClass"
-              placeholder="Teks promosi…"
+              :placeholder="
+                form.type === 'auto_inbox'
+                  ? 'Halo {firstName}, ini pesan pertama...\\n---\\nHalo {name}, ini template kedua...'
+                  : form.type === 'auto_comment'
+                    ? 'Mantap sob, menarik produknya.'
+                  : 'Teks promosi…'
+              "
             />
+            <p v-if="form.type === 'auto_inbox'" class="mt-1 text-xs text-muted-foreground">
+              Pisahkan beberapa template dengan baris <code>---</code>. Placeholder
+              yang didukung: <code>{name}</code>, <code>{firstName}</code>, dan
+              <code>{profileId}</code>. Worker akan memilih template secara acak
+              per target dan menahan duplicate inbox sukses dalam window aman.
+            </p>
+            <p v-else-if="form.type === 'auto_comment'" class="mt-1 text-xs text-muted-foreground">
+              Satu comment akan dikirim ke URL target oleh tiap akun yang dipilih.
+            </p>
           </div>
 
           <div v-if="needsMaxTargets">
@@ -903,6 +1025,13 @@ const createTypeOptions = [
           >
             {{ hiddenGroupCount }} group disembunyikan karena member count di bawah
             minimum atau metadata member belum tersedia.
+          </p>
+          <p
+            v-if="form.type === 'auto_post'"
+            class="text-xs text-muted-foreground"
+          >
+            <code>Auto Post</code> bisa memakai kombinasi group dari list database,
+            label kelompok, dan 1 URL group manual tambahan.
           </p>
           <div class="rounded-md border border-dashed border-border px-3 py-3">
             <div class="flex items-center justify-between gap-3">

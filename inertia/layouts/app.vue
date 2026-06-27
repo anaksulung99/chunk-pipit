@@ -52,7 +52,7 @@ const currentUser = computed(() => page.props.user ?? null);
           </div>
         </div>
         <footer
-          class="border-t border-border px-4 py-1.5 text-center text-xs text-muted-foreground sm:px-6"
+          class="border-t border-border px-4 py-1.5 text-center text-xs text-muted-foreground sm:px-6 hidden"
         >
           © {{ new Date().getFullYear() }} Chunk Pipit. Seluruh hak cipta dilindungi.
         </footer>

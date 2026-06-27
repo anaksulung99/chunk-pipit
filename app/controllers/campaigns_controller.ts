@@ -108,6 +108,7 @@ function fallbackCampaignName(payload: {
     url?: string
     pageUrl?: string
     anyFacebookUrl?: string
+    manualGroupUrl?: string
     scrapeProfileType?: CampaignProfileType | null
     inviteType?: CampaignInviteType | null
     postType?: CampaignPostType | null
@@ -176,6 +177,7 @@ function fallbackCampaignName(payload: {
     return 'Auto Invite'
   }
   if (payload.type === 'auto_post') {
+    if (payload.config?.manualGroupUrl) return 'Auto Post · Manual Group URL'
     if (payload.config?.postType === 'group') return 'Auto Post · Group'
     if (payload.config?.postType === 'fanspage') return 'Auto Post · Fanspage'
     if (payload.config?.postType === 'event') return 'Auto Post · Event'
@@ -279,6 +281,7 @@ export default class CampaignsController {
       pageUrl?: string
       url?: string
       anyFacebookUrl?: string
+      manualGroupUrl?: string
       scrapeProfileType?: CampaignProfileType | null
       inviteType?: CampaignInviteType | null
       postType?: CampaignPostType | null
@@ -615,6 +618,10 @@ export default class CampaignsController {
       )
       return response.redirect().back()
     }
+    if (payload.type === 'auto_comment' && payload.config?.commentType !== 'post') {
+      session.flash('error', 'Auto Comment saat ini baru mendukung target post.')
+      return response.redirect().back()
+    }
 
     if (payload.type === 'auto_invite' && !payload.config?.inviteType) {
       session.flash('error', 'Auto Invite membutuhkan tipe invite.')
@@ -628,16 +635,39 @@ export default class CampaignsController {
       session.flash('error', 'Auto Post membutuhkan tipe posting dan caption posting.')
       return response.redirect().back()
     }
+    if (payload.type === 'auto_post' && payload.config?.postType !== 'group') {
+      session.flash('error', 'Auto Post saat ini baru mendukung target group.')
+      return response.redirect().back()
+    }
+    if (
+      payload.type === 'auto_post' &&
+      !payload.config?.manualGroupUrl &&
+      !(payload.groupIds?.length || normalizedGroupTags.length)
+    ) {
+      session.flash(
+        'error',
+        'Auto Post membutuhkan minimal 1 target group dari list/label atau 1 URL group manual.'
+      )
+      return response.redirect().back()
+    }
     if (payload.type === 'auto_inbox' && (!payload.config?.inboxType || !payload.config?.caption)) {
       session.flash('error', 'Auto Inbox membutuhkan tipe inbox dan caption inbox.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_delete' && !payload.config?.deleteType) {
-      session.flash('error', 'Auto Delete membutuhkan tipe delete.')
+    if (payload.type === 'auto_inbox' && payload.config?.inboxType !== 'friend') {
+      session.flash('error', 'Auto Inbox saat ini baru mendukung target friend.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_delete' && (!payload.config?.deleteType || !payload.config?.url)) {
+      session.flash('error', 'Auto Delete membutuhkan tipe delete dan URL target.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_confirm' && !payload.config?.confirmType) {
       session.flash('error', 'Auto Confirm membutuhkan tipe confirm.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_confirm' && payload.config?.confirmType !== 'friend') {
+      session.flash('error', 'Auto Confirm saat ini baru mendukung friend request.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_create' && !payload.config?.createType) {
@@ -1207,8 +1237,15 @@ export default class CampaignsController {
       session.flash('error', 'Auto Like membutuhkan URL target.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_comment' && (!payload.config?.commentType || !payload.config?.url)) {
-      session.flash('error', 'Auto Comment membutuhkan tipe comment atau URL target.')
+    if (
+      payload.type === 'auto_comment' &&
+      (!payload.config?.commentType || !payload.config?.url || !payload.config?.caption)
+    ) {
+      session.flash('error', 'Auto Comment membutuhkan tipe comment, URL target, dan caption.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_comment' && payload.config?.commentType !== 'post') {
+      session.flash('error', 'Auto Comment saat ini baru mendukung target post.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_invite' && !payload.config?.inviteType) {
@@ -1223,16 +1260,39 @@ export default class CampaignsController {
       session.flash('error', 'Auto Post membutuhkan tipe posting.')
       return response.redirect().back()
     }
+    if (payload.type === 'auto_post' && payload.config?.postType !== 'group') {
+      session.flash('error', 'Auto Post saat ini baru mendukung target group.')
+      return response.redirect().back()
+    }
+    if (
+      payload.type === 'auto_post' &&
+      !payload.config?.manualGroupUrl &&
+      !(payload.groupIds?.length || normalizedGroupTags.length)
+    ) {
+      session.flash(
+        'error',
+        'Auto Post membutuhkan minimal 1 target group dari list/label atau 1 URL group manual.'
+      )
+      return response.redirect().back()
+    }
     if (payload.type === 'auto_inbox' && !payload.config?.inboxType) {
       session.flash('error', 'Auto Inbox membutuhkan tipe inbox.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_delete' && !payload.config?.deleteType) {
-      session.flash('error', 'Auto Delete membutuhkan tipe delete.')
+    if (payload.type === 'auto_inbox' && payload.config?.inboxType !== 'friend') {
+      session.flash('error', 'Auto Inbox saat ini baru mendukung target friend.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_delete' && (!payload.config?.deleteType || !payload.config?.url)) {
+      session.flash('error', 'Auto Delete membutuhkan tipe delete dan URL target.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_confirm' && !payload.config?.confirmType) {
       session.flash('error', 'Auto Confirm membutuhkan tipe confirm.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_confirm' && payload.config?.confirmType !== 'friend') {
+      session.flash('error', 'Auto Confirm saat ini baru mendukung friend request.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_create' && !payload.config?.createType) {
@@ -1397,8 +1457,13 @@ export default class CampaignsController {
             | 'auto_join'
             | 'scrape_profile'
             | 'auto_add_friend'
+            | 'auto_like'
+            | 'auto_comment'
             | 'auto_invite'
+            | 'auto_post'
             | 'auto_unfriend'
+            | 'auto_inbox'
+            | 'auto_delete'
             | 'auto_confirm',
           enqueuedAt: DateTime.now().toISO()!,
         })
@@ -1600,10 +1665,16 @@ export default class CampaignsController {
         scrape_metadata: 'Perdalam metadata',
         scrape_fallback: 'Fallback akun',
         auto_add_friend: 'Auto add friend',
+        auto_like: 'Auto like',
+        auto_comment: 'Auto comment',
         auto_invite: 'Auto invite',
         auto_confirm: 'Auto confirm',
         auto_join: 'Auto join',
         auto_share: 'Auto share',
+        auto_post: 'Auto post',
+        auto_unfriend: 'Auto unfriend',
+        auto_inbox: 'Auto inbox',
+        auto_delete: 'Auto delete',
       }[action] ?? action.replaceAll('_', ' ')
     )
   }

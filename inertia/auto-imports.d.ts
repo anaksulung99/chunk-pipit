@@ -6,16 +6,26 @@
 // biome-ignore lint: disable
 export {}
 declare global {
+  const BROWSER_LABELS: typeof import('./utils/fingerprint').BROWSER_LABELS
+  const BROWSER_VERSION_MAP: typeof import('./utils/fingerprint').BROWSER_VERSION_MAP
+  const DEVICE_OS_MAP: typeof import('./utils/fingerprint').DEVICE_OS_MAP
+  const ENGINE_MAP: typeof import('./utils/fingerprint').ENGINE_MAP
   const EffectScope: typeof import('vue').EffectScope
   const Icon: typeof import('./lib/iconify-offline').Icon
   const IsoLanguages: typeof import('./utils/iso').IsoLanguages
   const NetworkHelper: typeof import('./utils/network').NetworkHelper
+  const OS_BROWSER_COMPAT: typeof import('./utils/fingerprint').OS_BROWSER_COMPAT
+  const OS_LABELS: typeof import('./utils/fingerprint').OS_LABELS
+  const OS_VERSION_MAP: typeof import('./utils/fingerprint').OS_VERSION_MAP
   const TimezoneList: typeof import('./utils/iso').TimezoneList
+  const VIEWPORT_PRESETS: typeof import('./utils/fingerprint').VIEWPORT_PRESETS
+  const WEBGL_PRESETS: typeof import('./utils/fingerprint').WEBGL_PRESETS
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
   const addCollection: typeof import('./lib/iconify-offline').addCollection
   const addIcon: typeof import('./lib/iconify-offline').addIcon
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
+  const buildUserAgent: typeof import('./utils/fingerprint').buildUserAgent
   const buttonVariants: typeof import('./lib/utils').buttonVariants
   const cn: typeof import('./lib/utils').cn
   const computed: typeof import('vue').computed
@@ -55,6 +65,9 @@ declare global {
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
+  const getHardwarePreset: typeof import('./utils/fingerprint').getHardwarePreset
+  const getViewportPreset: typeof import('./utils/fingerprint').getViewportPreset
+  const getWebglPreset: typeof import('./utils/fingerprint').getWebglPreset
   const h: typeof import('vue').h
   const iconifyOffline: typeof import('./lib/iconify-offline').default
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
@@ -149,6 +162,7 @@ declare global {
   const useActiveElement: typeof import('@vueuse/core').useActiveElement
   const useAlert: typeof import('./composables/useAlert').useAlert
   const useAnimate: typeof import('@vueuse/core').useAnimate
+  const useAntidetectForm: typeof import('./composables/useAntidetect').useAntidetectForm
   const useArrayDifference: typeof import('@vueuse/core').useArrayDifference
   const useArrayEvery: typeof import('@vueuse/core').useArrayEvery
   const useArrayFilter: typeof import('@vueuse/core').useArrayFilter
@@ -389,16 +403,26 @@ import { UnwrapRef } from 'vue'
 declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
+    readonly BROWSER_LABELS: UnwrapRef<typeof import('./utils/fingerprint')['BROWSER_LABELS']>
+    readonly BROWSER_VERSION_MAP: UnwrapRef<typeof import('./utils/fingerprint')['BROWSER_VERSION_MAP']>
+    readonly DEVICE_OS_MAP: UnwrapRef<typeof import('./utils/fingerprint')['DEVICE_OS_MAP']>
+    readonly ENGINE_MAP: UnwrapRef<typeof import('./utils/fingerprint')['ENGINE_MAP']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly Icon: UnwrapRef<typeof import('./lib/iconify-offline')['Icon']>
     readonly IsoLanguages: UnwrapRef<typeof import('./utils/iso')['IsoLanguages']>
     readonly NetworkHelper: UnwrapRef<typeof import('./utils/network')['NetworkHelper']>
+    readonly OS_BROWSER_COMPAT: UnwrapRef<typeof import('./utils/fingerprint')['OS_BROWSER_COMPAT']>
+    readonly OS_LABELS: UnwrapRef<typeof import('./utils/fingerprint')['OS_LABELS']>
+    readonly OS_VERSION_MAP: UnwrapRef<typeof import('./utils/fingerprint')['OS_VERSION_MAP']>
     readonly TimezoneList: UnwrapRef<typeof import('./utils/iso')['TimezoneList']>
+    readonly VIEWPORT_PRESETS: UnwrapRef<typeof import('./utils/fingerprint')['VIEWPORT_PRESETS']>
+    readonly WEBGL_PRESETS: UnwrapRef<typeof import('./utils/fingerprint')['WEBGL_PRESETS']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly addCollection: UnwrapRef<typeof import('./lib/iconify-offline')['addCollection']>
     readonly addIcon: UnwrapRef<typeof import('./lib/iconify-offline')['addIcon']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
+    readonly buildUserAgent: UnwrapRef<typeof import('./utils/fingerprint')['buildUserAgent']>
     readonly buttonVariants: UnwrapRef<typeof import('./lib/utils')['buttonVariants']>
     readonly cn: UnwrapRef<typeof import('./lib/utils')['cn']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
@@ -438,6 +462,9 @@ declare module 'vue' {
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
+    readonly getHardwarePreset: UnwrapRef<typeof import('./utils/fingerprint')['getHardwarePreset']>
+    readonly getViewportPreset: UnwrapRef<typeof import('./utils/fingerprint')['getViewportPreset']>
+    readonly getWebglPreset: UnwrapRef<typeof import('./utils/fingerprint')['getWebglPreset']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly iconifyOffline: UnwrapRef<typeof import('./lib/iconify-offline')['default']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
@@ -532,6 +559,7 @@ declare module 'vue' {
     readonly useActiveElement: UnwrapRef<typeof import('@vueuse/core')['useActiveElement']>
     readonly useAlert: UnwrapRef<typeof import('./composables/useAlert')['useAlert']>
     readonly useAnimate: UnwrapRef<typeof import('@vueuse/core')['useAnimate']>
+    readonly useAntidetectForm: UnwrapRef<typeof import('./composables/useAntidetect')['useAntidetectForm']>
     readonly useArrayDifference: UnwrapRef<typeof import('@vueuse/core')['useArrayDifference']>
     readonly useArrayEvery: UnwrapRef<typeof import('@vueuse/core')['useArrayEvery']>
     readonly useArrayFilter: UnwrapRef<typeof import('@vueuse/core')['useArrayFilter']>

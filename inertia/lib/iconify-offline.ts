@@ -10,6 +10,7 @@ import heroiconsIcons from '@iconify-json/heroicons/icons.json'
 import phIcons from '@iconify-json/ph/icons.json'
 import stashIcons from '@iconify-json/stash/icons.json'
 import logosJson from '@iconify-json/logos/icons.json'
+import fluentColorIcon from '@iconify-json/fluent-color/icons.json'
 
 let registered = false
 
@@ -29,6 +30,7 @@ function registerCollections() {
   addCollection(phIcons as IconifyJSON)
   addCollection(stashIcons as IconifyJSON)
   addCollection(logosJson as IconifyJSON)
+  addCollection(fluentColorIcon as IconifyJSON)
   registered = true
 }
 

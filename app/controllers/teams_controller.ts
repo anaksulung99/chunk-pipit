@@ -6,6 +6,7 @@ import License from '#models/license'
 import Campaign from '#models/campaign'
 import FacebookGroup from '#models/facebook_group'
 import FacebookAccount from '#models/facebook_account'
+import FacebookProfile from '#models/facebook_profile'
 import Proxy from '#models/proxy'
 import FingerprintProfile from '#models/fingerprint_profile'
 import SessionLog from '#models/session_log'
@@ -18,7 +19,6 @@ import {
 } from '#validators/user'
 import { generateLicenseKey } from '#services/license/license_key'
 import encryption from '@adonisjs/core/services/encryption'
-import FacebookProfile from '#models/facebook_profile'
 
 const SORTABLE = ['created_at', 'full_name', 'email', 'role', 'is_active'] as const
 
@@ -262,6 +262,11 @@ export default class TeamsController {
       .orderBy('created_at', 'desc')
       .limit(15)
 
+    const topFbProfiles = await FacebookProfile.query()
+      .where('user_id', team.id)
+      .orderBy('created_at', 'desc')
+      .limit(15)
+
     const todayByStatus = tally(todayActions.map((l) => l.status))
 
     const dailyActivityMap = new Map<
@@ -474,6 +479,24 @@ export default class TeamsController {
         tags: g.tags?.join(',') ?? null,
         createdAt: g.createdAt ? g.createdAt.toISO() : null,
       })),
+      fbProfiles: topFbProfiles.map((p) => ({
+        id: p.id,
+        profileId: p.profileId,
+        profileName: p.profileName,
+        profileUrl: p.profileUrl,
+        followerCount: p.followerCount ?? 0,
+        followingCount: p.followingCount ?? 0,
+        friendCount: p.friendCount ?? 0,
+        sourceUrl: p.sourceUrl,
+        sourceType: p.sourceType,
+        tags: p.tags?.join(',') ?? null,
+        relationshipStatus: p.relationshipStatus,
+        lastAction: p.lastAction,
+        lastActionAt: p.lastActionAt ? p.lastActionAt.toISO() : null,
+        lastActionMessage: p.lastActionMessage,
+        lastActionStatus: p.lastActionStatus,
+        createdAt: p.createdAt ? p.createdAt.toISO() : null,
+      })),
     })
   }
 
@@ -649,6 +672,87 @@ export default class TeamsController {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
     const filename = `${safeName || 'team'}-facebook-cookies.json`
+
+    return response
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .header('Cache-Control', 'no-store')
+      .type('application/json')
+      .send(JSON.stringify(payload, null, 2))
+  }
+
+  async exportGroups({ params, response }: HttpContext) {
+    const team = await User.query().where('id', params.id).firstOrFail()
+
+    const groups = await FacebookGroup.query()
+      .where('user_id', team.id)
+      .orderBy('created_at', 'asc')
+
+    const payload = groups.map((group) => {
+      return {
+        id: group.id,
+        groupId: group.groupId,
+        groupName: group.groupName,
+        groupType: group.groupType,
+        groupUrl: group.groupUrl,
+        memberCount: group.memberCount,
+        sourceFriendUrl: group.sourceFriendUrl,
+        sourceKeyword: group.sourceKeyword,
+        sourceType: group.sourceType,
+        tags: group.tags,
+        created_at: group.createdAt,
+        updated_at: group.updatedAt,
+      }
+    })
+
+    const safeName = (team.fullName || team.email || team.id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    const filename = `${safeName || 'team'}-facebook-groups.json`
+
+    return response
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .header('Cache-Control', 'no-store')
+      .type('application/json')
+      .send(JSON.stringify(payload, null, 2))
+  }
+
+  async exportProfiles({ params, response }: HttpContext) {
+    const team = await User.query().where('id', params.id).firstOrFail()
+
+    const profiles = await FacebookProfile.query()
+      .where('user_id', team.id)
+      .orderBy('created_at', 'asc')
+
+    const payload = profiles.map((profile) => {
+      return {
+        id: profile.id,
+        profileId: profile.profileId,
+        profileName: profile.profileName,
+        profileUrl: profile.profileUrl,
+        friendCount: profile.friendCount,
+        mutualFriendCount: profile.mutualFriendCount,
+        followerCount: profile.followerCount,
+        followingCount: profile.followingCount,
+        sourceUrl: profile.sourceUrl,
+        sourceType: profile.sourceType,
+        tags: profile.tags,
+        relationshipStatus: profile.relationshipStatus,
+        lastAction: profile.lastAction,
+        lastActionAt: profile.lastActionAt,
+        lastActionMessage: profile.lastActionMessage,
+        lastActionStatus: profile.lastActionStatus,
+        lifecycleStatus: profile.lifecycleStatus,
+        created_at: profile.createdAt,
+        updated_at: profile.updatedAt,
+      }
+    })
+
+    const safeName = (team.fullName || team.email || team.id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    const filename = `${safeName || 'team'}-facebook-profiles.json`
 
     return response
       .header('Content-Disposition', `attachment; filename="${filename}"`)

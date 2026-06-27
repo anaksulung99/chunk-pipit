@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Data } from "@generated/data";
 import { Link } from "@adonisjs/inertia/vue";
+import { Icon } from "@iconify/vue";
+
 defineProps<{
   user?: Data.User | null;
 }>();
@@ -8,6 +10,7 @@ defineProps<{
 defineEmits<{
   (e: "toggle-sidebar"): void;
 }>();
+const isOpen = ref(false);
 </script>
 
 <template>
@@ -46,12 +49,19 @@ defineEmits<{
     </div>
 
     <div class="flex items-center gap-2">
-      <ThemeToggle />
-      <span
-        class="rounded-md text-xs border text-emerald-600 border-emerald-600 p-2 uppercase"
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        title="Support Agent"
+        class="shadow-md bg-blue-600/10 text-blue-600 dark:text-blue-500 hover:bg-blue-600/30 hover:text-blue-700 dark:hover:text-blue-600 border border-blue-600/50 rounded-md"
+        @click="isOpen = true"
       >
-        {{ user?.role ?? "User" }}
-      </span>
+        <Icon icon="material-symbols:support-agent" />
+      </Button>
+      <ThemeToggle />
+      <AdminUserMenu :user="user" />
     </div>
+
+    <SupportAgentDialog v-model:open="isOpen" @close="isOpen = false" />
   </header>
 </template>

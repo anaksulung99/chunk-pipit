@@ -116,6 +116,24 @@ const props = defineProps<{
     createdAt: string | null;
   }[];
   licenses: Data.License[];
+  fbProfiles: {
+    id: string;
+    profileId: string;
+    profileName: string | null;
+    profileUrl: string | null;
+    followerCount: number;
+    followingCount: number;
+    friendCount: number;
+    sourceUrl: string | null;
+    sourceType: string;
+    tags: string | null;
+    relationshipStatus: string;
+    lastAction: string | null;
+    lastActionAt: string | null;
+    lastActionMessage: string | null;
+    lastActionStatus: string | null;
+    createdAt: string | null;
+  }[];
 }>();
 
 const rangeDate = ref<DateRange>(
@@ -393,6 +411,12 @@ const topActionMax = computed(() =>
 
 async function exportCookies() {
   window.location.assign(`/teams/${props.team.id}/export-cookies`);
+}
+async function exportGroups() {
+  window.location.assign(`/teams/${props.team.id}/export-groups`);
+}
+async function exportProfiles() {
+  window.location.assign(`/teams/${props.team.id}/export-profiles`);
 }
 
 const getFbStatusColor = (k: string) =>
@@ -966,8 +990,19 @@ const getFbStatusColor = (k: string) =>
       <section
         class="rounded-lg border border-border bg-card p-4 overflow-hidden space-y-4"
       >
-        <h3 class="mb-3 text-sm font-medium">Top Facebook Group</h3>
-
+        <div class="flex items-center justify-between">
+          <h3 class="mb-3 text-sm font-medium">Top Facebook Group</h3>
+          <div class="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              class="text-xs font-medium text-white bg-sky-600 hover:bg-sky-700"
+              @click="exportGroups"
+            >
+              <Cookie /> Export Group
+            </Button>
+          </div>
+        </div>
         <div
           class="hidden md:block overflow-x-auto border border-border bg-background p-2"
         >
@@ -1018,6 +1053,86 @@ const getFbStatusColor = (k: string) =>
                 </td>
                 <td class="px-4 py-3">{{ a.sourceKeyword }}</td>
                 <td class="px-4 py-3">{{ fmt(a.createdAt) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          v-if="!props.fbGroups?.length"
+          class="text-center py-8 text-muted-foreground"
+        >
+          <p>No Facebook groups found</p>
+        </div>
+      </section>
+      <section
+        class="rounded-lg border border-border bg-card p-4 overflow-hidden space-y-4"
+      >
+        <div class="flex items-center justify-between">
+          <h3 class="mb-3 text-sm font-medium">Top Facebook Profile</h3>
+          <div class="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              class="text-xs font-medium text-white bg-sky-600 hover:bg-sky-700"
+              @click="exportProfiles"
+            >
+              <Cookie /> Export Profile
+            </Button>
+          </div>
+        </div>
+        <div
+          class="hidden md:block overflow-x-auto border border-border bg-background p-2"
+        >
+          <table class="w-full border-collapse text-sm">
+            <thead>
+              <tr class="bg-teal-600/40 dark:bg-teal-600/20">
+                <th class="px-4 py-3 text-left font-medium">Profile ID</th>
+                <th class="px-4 py-3 text-left font-medium">Profile Name</th>
+                <th class="px-4 py-3 text-left font-medium">Profile URL</th>
+                <th class="px-4 py-3 text-left font-medium">Profile Type</th>
+                <th class="px-4 py-3 text-left font-medium">Total Follower</th>
+                <th class="px-4 py-3 text-left font-medium">Total Following</th>
+                <th class="px-4 py-3 text-left font-medium">Total Friend</th>
+                <th class="px-4 py-3 text-left font-medium">Source URL</th>
+                <th class="px-4 py-3 text-left font-medium">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="p in props.fbProfiles"
+                :key="p.id"
+                class="border-t border-border hover:bg-muted/50 transition-colors"
+              >
+                <td class="px-4 py-3">{{ p.profileId }}</td>
+                <td class="px-4 py-3 font-mono text-xs">{{ p.profileName }}</td>
+                <td class="px-4 py-3">
+                  <a
+                    v-if="p.profileUrl"
+                    :href="p.profileUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-emerald-600 dark:text-emerald-400 hover:underline truncate max-w-50 inline-block"
+                  >
+                    {{ p.profileUrl }}
+                  </a>
+                </td>
+                <td class="px-4 py-3">{{ p.sourceType }}</td>
+                <td class="px-4 py-3">{{ p.followerCount }}</td>
+                <td class="px-4 py-3">{{ p.followingCount }}</td>
+                <td class="px-4 py-3">{{ p.friendCount }}</td>
+                <td class="px-4 py-3">
+                  <a
+                    v-if="p.sourceUrl"
+                    :href="p.sourceUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-emerald-600 dark:text-emerald-400 hover:underline truncate max-w-50 inline-block"
+                  >
+                    {{ p.sourceUrl }}
+                  </a>
+                </td>
+                <td class="px-4 py-3">{{ fmt(p.createdAt) }}</td>
               </tr>
             </tbody>
           </table>

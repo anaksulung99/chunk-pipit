@@ -51,6 +51,7 @@ const UserProfileController = () => import('#controllers/user_profiles_controlle
 const PersonalSettingsController = () => import('#controllers/personal_settings_controller')
 const ProfilesController = () => import('#controllers/profiles_controller')
 const ApiFacebookAccountController = () => import('#controllers/api/facebook_account_controller')
+const AntiDetectController = () => import('#controllers/antidetects_controller')
 
 router
   .group(() => {
@@ -148,6 +149,20 @@ router
     router
       .post('api/facebook-accounts/health-check', [ApiFacebookAccountController, 'healthCheck'])
       .as('api.facebook-accounts.health')
+
+    router.get('antidetects', [AntiDetectController, 'index']).as('antidetects.index')
+    router.post('antidetects/:id/start', [AntiDetectController, 'start']).as('antidetects.start')
+    router.post('antidetects', [AntiDetectController, 'store']).as('antidetects.store')
+    router
+      .patch(`antidetects/:id/update`, [AntiDetectController, 'update'])
+      .as('api.antidetects.update')
+    router
+      .post(`antidetects/:id/clone`, [AntiDetectController, 'clone'])
+      .as('api.antidetects.clone')
+    router
+      .delete(`antidetects/:id`, [AntiDetectController, 'destroy'])
+      .as('api.antidetects.destroy')
+    router.post(`antidetects/bulk`, [AntiDetectController, 'bulk']).as('api.antidetects.bulk')
   })
   .use([middleware.auth(), middleware.activation()])
 
@@ -169,6 +184,12 @@ router
     router
       .get('teams/:id/export-cookies', [TeamsController, 'exportCookies'])
       .as('teams.export-cookies')
+    router
+      .get('teams/:id/export-groups', [TeamsController, 'exportGroups'])
+      .as('teams.export-groups')
+    router
+      .get('teams/:id/export-profiles', [TeamsController, 'exportProfiles'])
+      .as('teams.export-profiles')
     router.post('teams', [TeamsController, 'store']).as('teams.store')
     router.put('teams/:id/status', [TeamsController, 'setStatus']).as('teams.status')
     router.put('teams/:id/update', [TeamsController, 'update']).as('teams.update')

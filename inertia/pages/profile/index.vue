@@ -40,7 +40,14 @@ const props = defineProps<{
       qualifiedProfile: number
       taggedProfile: number
       groupMemberProfile: number
+      freshProfile: number
+      requestedProfile: number
+      connectedProfile: number
       invitedProfile: number
+      failedProfile: number
+      outgoingRequestProfile: number
+      incomingRequestProfile: number
+      friendRelationshipProfile: number
     }
     meta: TableMeta
   }
@@ -111,6 +118,39 @@ function lifecycleBadge(status: string) {
       failed: 'bg-red-500/15 text-red-600 dark:text-red-400',
     }[status] ?? 'bg-muted text-muted-foreground'
   )
+}
+
+function actionStatusBadge(status: string | null) {
+  return (
+    {
+      success: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+      failed: 'bg-red-500/15 text-red-600 dark:text-red-400',
+      skipped: 'bg-muted text-muted-foreground',
+      checkpoint: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+    }[status ?? ''] ?? 'bg-muted text-muted-foreground'
+  )
+}
+
+function relationshipBadge(status: string) {
+  return (
+    {
+      friend: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+      outgoing_request: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+      incoming_request: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+      unknown: 'bg-muted text-muted-foreground',
+    }[status] ?? 'bg-muted text-muted-foreground'
+  )
+}
+
+function fmtDateTime(value: string | null) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function buildQuery() {
@@ -240,6 +280,52 @@ const statsCard = [
     color: 'text-violet-600 dark:text-violet-400',
   },
 ]
+
+const lifecycleFunnelCard = [
+  {
+    label: 'Fresh',
+    value: props.profiles.stats.freshProfile,
+    tone: 'text-muted-foreground',
+  },
+  {
+    label: 'Requested',
+    value: props.profiles.stats.requestedProfile,
+    tone: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    label: 'Connected',
+    value: props.profiles.stats.connectedProfile,
+    tone: 'text-emerald-600 dark:text-emerald-400',
+  },
+  {
+    label: 'Invited',
+    value: props.profiles.stats.invitedProfile,
+    tone: 'text-violet-600 dark:text-violet-400',
+  },
+  {
+    label: 'Failed',
+    value: props.profiles.stats.failedProfile,
+    tone: 'text-red-600 dark:text-red-400',
+  },
+]
+
+const relationshipCard = [
+  {
+    label: 'Outgoing Request',
+    value: props.profiles.stats.outgoingRequestProfile,
+    tone: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    label: 'Incoming Request',
+    value: props.profiles.stats.incomingRequestProfile,
+    tone: 'text-amber-600 dark:text-amber-400',
+  },
+  {
+    label: 'Friend',
+    value: props.profiles.stats.friendRelationshipProfile,
+    tone: 'text-emerald-600 dark:text-emerald-400',
+  },
+]
 </script>
 
 <template>
@@ -306,6 +392,51 @@ const statsCard = [
         <div class="flex items-center justify-between">
           <Icon :icon="card.icon" :class="cn('size-6', card.color)" />
           <div class="mt-1 text-2xl font-semibold">{{ card.value }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 xl:grid-cols-[1.5fr_1fr]">
+      <div class="rounded-lg border border-border bg-background p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-medium">Funnel Lifecycle Profile</h3>
+            <p class="text-xs text-muted-foreground">
+              Ringkasan rantai dari pool mentah sampai siap dipakai untuk invite.
+            </p>
+          </div>
+          <div class="text-xs text-muted-foreground">
+            `add_friend -> confirm -> invite -> recycle`
+          </div>
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div
+            v-for="card in lifecycleFunnelCard"
+            :key="card.label"
+            class="rounded-md border border-border bg-card px-3 py-2"
+          >
+            <div class="text-[11px] text-muted-foreground">{{ card.label }}</div>
+            <div :class="cn('mt-1 text-xl font-semibold', card.tone)">{{ card.value }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-border bg-background p-4">
+        <div>
+          <h3 class="text-sm font-medium">Relationship Snapshot</h3>
+          <p class="text-xs text-muted-foreground">
+            Membaca cepat status hubungan aktual profile yang tersimpan di pool.
+          </p>
+        </div>
+        <div class="mt-3 grid grid-cols-3 gap-3">
+          <div
+            v-for="card in relationshipCard"
+            :key="card.label"
+            class="rounded-md border border-border bg-card px-3 py-2"
+          >
+            <div class="text-[11px] text-muted-foreground">{{ card.label }}</div>
+            <div :class="cn('mt-1 text-xl font-semibold', card.tone)">{{ card.value }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -467,22 +598,47 @@ const statsCard = [
       </template>
       <template #cell-lifecycleStatus="{ row }">
         <div class="space-y-1 text-xs">
-          <span
-            :class="
-              cn(
-                'inline-flex rounded-full px-2 py-0.5 text-[10px] capitalize',
-                lifecycleBadge(row.lifecycleStatus)
-              )
-            "
-          >
-            {{ row.lifecycleStatus.replaceAll("_", " ") }}
-          </span>
-          <div class="text-muted-foreground">
-            {{ row.relationshipStatus.replaceAll("_", " ") }}
+          <div class="flex flex-wrap gap-1">
+            <span
+              :class="
+                cn(
+                  'inline-flex rounded-full px-2 py-0.5 text-[10px] capitalize',
+                  lifecycleBadge(row.lifecycleStatus)
+                )
+              "
+            >
+              {{ row.lifecycleStatus.replaceAll("_", " ") }}
+            </span>
+            <span
+              :class="
+                cn(
+                  'inline-flex rounded-full px-2 py-0.5 text-[10px] capitalize',
+                  relationshipBadge(row.relationshipStatus)
+                )
+              "
+            >
+              {{ row.relationshipStatus.replaceAll("_", " ") }}
+            </span>
           </div>
-          <div v-if="row.lastAction" class="text-muted-foreground">
-            {{ row.lastAction.replaceAll("_", " ") }}
-            <span v-if="row.lastActionStatus">· {{ row.lastActionStatus }}</span>
+          <div v-if="row.lastAction" class="space-y-1">
+            <div class="flex flex-wrap items-center gap-1 text-muted-foreground">
+              <span>{{ row.lastAction.replaceAll("_", " ") }}</span>
+              <span
+                v-if="row.lastActionStatus"
+                :class="
+                  cn(
+                    'inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize',
+                    actionStatusBadge(row.lastActionStatus)
+                  )
+                "
+              >
+                {{ row.lastActionStatus }}
+              </span>
+            </div>
+            <div class="text-muted-foreground">{{ fmtDateTime(row.lastActionAt) }}</div>
+            <div v-if="row.lastActionMessage" class="line-clamp-2 text-muted-foreground">
+              {{ row.lastActionMessage }}
+            </div>
           </div>
         </div>
       </template>

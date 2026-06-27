@@ -36,7 +36,7 @@ export default class FacebookAccountController {
       })
     }
 
-    const healthState = await checkAccountHealth(account)
+    const healthState = await checkAccountHealth(account, true)
     if (healthState === 'server_error') {
       return response.internalServerError({
         status: 500,

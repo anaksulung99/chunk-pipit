@@ -335,10 +335,84 @@ const typeLabel = (t: string) =>
     auto_join: "Auto Join",
     scrape_profile: "Scrape Profile",
     auto_add_friend: "Auto Add Friend",
+    auto_like: "Auto Like",
+    auto_comment: "Auto Comment",
     auto_invite: "Auto Invite",
+    auto_post: "Auto Post",
     auto_unfriend: "Auto Unfriend",
+    auto_inbox: "Auto Inbox",
+    auto_delete: "Auto Delete",
     auto_confirm: "Auto Confirm",
+    auto_create: "Auto Create",
   }[t] ?? t);
+
+function configString(key: string) {
+  const value = props.campaign.config[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+const deleteTypeLabel = computed(() => {
+  if (props.campaign.type !== "auto_delete") return null;
+  const raw = configString("deleteType");
+  if (raw === "comment") return "Comment";
+  if (raw === "post") return "Post";
+  return null;
+});
+const confirmTypeLabel = computed(() => {
+  if (props.campaign.type !== "auto_confirm") return null;
+  const raw = configString("confirmType");
+  if (raw === "friend") return "Friend Request";
+  if (raw === "group") return "Group";
+  return null;
+});
+const campaignUrlLabel = computed(() => {
+  if (props.campaign.type === "auto_delete") {
+    return deleteTypeLabel.value === "Comment" ? "Permalink Comment" : "Permalink Post";
+  }
+  if (props.campaign.type === "auto_invite") return "URL Target Invite";
+  if (props.campaign.type === "auto_like") return "URL Target Like";
+  if (props.campaign.type === "auto_comment") return "URL Target Comment";
+  if (props.campaign.type === "auto_share") return "URL Target Share";
+  if (props.campaign.type === "auto_unfriend") return "URL Profile Target";
+  return "URL";
+});
+const campaignUrl = computed(() => configString("url"));
+const manualGroupUrl = computed(() => configString("manualGroupUrl"));
+const autoDeleteSummary = computed(() => {
+  if (props.campaign.type !== "auto_delete") return null;
+  const targetType = deleteTypeLabel.value?.toLowerCase() ?? "konten";
+  return `1 permalink ${targetType} per campaign. Akun eksekutor idealnya akun pemilik konten agar menu delete muncul stabil saat worker berjalan.`;
+});
+const autoDeleteHint = computed(() => {
+  if (props.campaign.type !== "auto_delete") return null;
+  return deleteTypeLabel.value === "Comment"
+    ? "Target comment sebaiknya memakai permalink lengkap yang masih mengandung parameter comment_id."
+    : "Target post sebaiknya memakai permalink canonical, misalnya format /groups/.../posts/.../.";
+});
+const autoConfirmSummary = computed(() => {
+  if (props.campaign.type !== "auto_confirm") return null;
+  return "Foundation saat ini fokus ke halaman friend requests milik akun terpilih. Worker akan mencoba confirm request yang memang terlihat dan siap diproses pada akun tersebut.";
+});
+const autoConfirmHint = computed(() => {
+  if (props.campaign.type !== "auto_confirm") return null;
+  return confirmTypeLabel.value === "Friend Request"
+    ? "Mode aktif sekarang hanya friend request. Jalur confirm tipe group masih diparkir agar hasil tetap jujur."
+    : "Mode ini belum diaktifkan penuh pada foundation sekarang.";
+});
+const autoConfirmActionReport = computed(
+  () => props.actionReport.find((row) => row.action === "auto_confirm") ?? null
+);
+const autoUnfriendSummary = computed(() => {
+  if (props.campaign.type !== "auto_unfriend") return null;
+  return "Foundation saat ini fokus memutus pertemanan dari profile pool terpilih. Worker akan membuka profile target, memeriksa state friendship, lalu hanya mengeksekusi unfriend jika surface-nya memang masih valid.";
+});
+const autoUnfriendHint = computed(() => {
+  if (props.campaign.type !== "auto_unfriend") return null;
+  return "Pool profile sebaiknya berasal dari hasil scrape teman atau target yang relationship-nya sudah cukup jelas, agar lane ini tidak banyak berhenti di status skipped.";
+});
+const autoUnfriendActionReport = computed(
+  () => props.actionReport.find((row) => row.action === "auto_unfriend") ?? null
+);
 
 const statusBadge = (s: string) =>
   ({
@@ -835,13 +909,109 @@ const overviewCards = computed(() => [
           }}</span>
         </div>
         <dl class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-          <div v-if="campaign.config.url" class="col-span-2 sm:col-span-3">
-            <dt class="text-xs text-muted-foreground">URL</dt>
-            <dd class="break-all">{{ campaign.config.url }}</dd>
+          <div
+            v-if="campaign.type === 'auto_delete'"
+            class="col-span-2 sm:col-span-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium text-foreground">Auto Delete Foundation</span>
+              <span
+                class="inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+              >
+                {{ deleteTypeLabel ?? "Target tunggal" }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">{{ autoDeleteSummary }}</p>
+            <p
+              v-if="autoDeleteHint"
+              class="mt-1 text-xs text-amber-700 dark:text-amber-300"
+            >
+              {{ autoDeleteHint }}
+            </p>
+          </div>
+          <div
+            v-if="campaign.type === 'auto_unfriend'"
+            class="col-span-2 sm:col-span-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-3"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium text-foreground">Auto Unfriend Foundation</span>
+              <span
+                class="inline-flex rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-700 dark:text-rose-300"
+              >
+                Profile Pool
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">{{ autoUnfriendSummary }}</p>
+            <p
+              v-if="autoUnfriendHint"
+              class="mt-1 text-xs text-rose-700 dark:text-rose-300"
+            >
+              {{ autoUnfriendHint }}
+            </p>
+          </div>
+          <div
+            v-if="campaign.type === 'auto_confirm'"
+            class="col-span-2 sm:col-span-3 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-3"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium text-foreground">Auto Confirm Foundation</span>
+              <span
+                class="inline-flex rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-300"
+              >
+                {{ confirmTypeLabel ?? "Target akun" }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">{{ autoConfirmSummary }}</p>
+            <p
+              v-if="autoConfirmHint"
+              class="mt-1 text-xs text-sky-700 dark:text-sky-300"
+            >
+              {{ autoConfirmHint }}
+            </p>
+          </div>
+          <div v-if="campaignUrl" class="col-span-2 sm:col-span-3">
+            <dt class="text-xs text-muted-foreground">{{ campaignUrlLabel }}</dt>
+            <dd class="break-all">
+              <a
+                :href="campaignUrl"
+                target="_blank"
+                rel="noreferrer"
+                class="inline-flex items-start gap-1 hover:underline"
+              >
+                <span class="break-all">{{ campaignUrl }}</span>
+                <ExternalLink class="mt-0.5 size-3.5 shrink-0" />
+              </a>
+            </dd>
+          </div>
+          <div v-if="manualGroupUrl" class="col-span-2 sm:col-span-3">
+            <dt class="text-xs text-muted-foreground">Manual Group URL</dt>
+            <dd class="break-all">
+              <a
+                :href="manualGroupUrl"
+                target="_blank"
+                rel="noreferrer"
+                class="inline-flex items-start gap-1 hover:underline"
+              >
+                <span class="break-all">{{ manualGroupUrl }}</span>
+                <ExternalLink class="mt-0.5 size-3.5 shrink-0" />
+              </a>
+            </dd>
           </div>
           <div v-if="campaign.config.caption" class="col-span-2 sm:col-span-3">
             <dt class="text-xs text-muted-foreground">Caption</dt>
             <dd class="whitespace-pre-wrap">{{ campaign.config.caption }}</dd>
+          </div>
+          <div v-if="deleteTypeLabel">
+            <dt class="text-xs text-muted-foreground">Mode Delete</dt>
+            <dd>{{ deleteTypeLabel }}</dd>
+          </div>
+          <div v-if="confirmTypeLabel">
+            <dt class="text-xs text-muted-foreground">Mode Confirm</dt>
+            <dd>{{ confirmTypeLabel }}</dd>
+          </div>
+          <div v-if="campaign.type === 'auto_unfriend'">
+            <dt class="text-xs text-muted-foreground">Sumber Target</dt>
+            <dd>Profile pool terpilih</dd>
           </div>
           <div v-if="campaign.config.keyword">
             <dt class="text-xs text-muted-foreground">Keyword</dt>
@@ -910,6 +1080,46 @@ const overviewCards = computed(() => [
           <h3 class="text-sm font-medium">Detail Report</h3>
         </div>
         <dl class="grid gap-3 text-sm">
+          <div
+            v-if="campaign.type === 'auto_unfriend'"
+            class="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2"
+          >
+            <dt class="text-xs text-rose-700 dark:text-rose-300">Ringkasan Aksi Auto Unfriend</dt>
+            <dd class="mt-1">
+              {{
+                autoUnfriendActionReport
+                  ? `${autoUnfriendActionReport.success} success / ${autoUnfriendActionReport.error} error dari ${autoUnfriendActionReport.total} aksi utama`
+                  : "Belum ada aksi auto_unfriend yang tercatat."
+              }}
+            </dd>
+            <dd class="text-xs text-muted-foreground">
+              {{
+                autoUnfriendActionReport?.lastActivityAt
+                  ? `Aktivitas terakhir ${fmt(autoUnfriendActionReport.lastActivityAt)}`
+                  : "Card ini membantu membaca cepat outcome unfriend tanpa membuka log detail satu per satu."
+              }}
+            </dd>
+          </div>
+          <div
+            v-if="campaign.type === 'auto_confirm'"
+            class="rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2"
+          >
+            <dt class="text-xs text-sky-700 dark:text-sky-300">Ringkasan Aksi Auto Confirm</dt>
+            <dd class="mt-1">
+              {{
+                autoConfirmActionReport
+                  ? `${autoConfirmActionReport.success} success / ${autoConfirmActionReport.error} error dari ${autoConfirmActionReport.total} aksi utama`
+                  : "Belum ada aksi auto_confirm yang tercatat."
+              }}
+            </dd>
+            <dd class="text-xs text-muted-foreground">
+              {{
+                autoConfirmActionReport?.lastActivityAt
+                  ? `Aktivitas terakhir ${fmt(autoConfirmActionReport.lastActivityAt)}`
+                  : "Saat berjalan, card ini membantu baca cepat outcome confirm tanpa membuka log detail."
+              }}
+            </dd>
+          </div>
           <div class="rounded-md border border-border bg-background px-3 py-2">
             <dt class="text-xs text-muted-foreground">Runtime Campaign</dt>
             <dd class="mt-1">{{ fmtDuration(campaignReport.runtimeMs) }}</dd>

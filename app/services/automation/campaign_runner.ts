@@ -21,8 +21,13 @@ import {
   extractGroupMetadataFromPage,
   extractProfileMetadataFromPage,
   runAutoAddFriend,
+  runAutoComment,
   runAutoConfirm,
+  runAutoDelete,
+  runAutoInbox,
   runAutoInvite,
+  runAutoLike,
+  runAutoPost,
   runAutoUnfriend,
   runAutoShare,
   runAutoJoin,
@@ -195,6 +200,27 @@ function preferProfileName(
   }
 
   return next
+}
+
+function randomizedCampaignDelay(maxDelayMs: number | null | undefined) {
+  const ceiling = Math.max(0, Number(maxDelayMs ?? 0))
+  if (ceiling <= 0) return 0
+  const floor = Math.min(ceiling, Math.max(900, Math.round(ceiling * 0.45)))
+  return Math.round(floor + Math.random() * Math.max(0, ceiling - floor))
+}
+
+function shouldSkipAutoInboxDuplicate(
+  profile: {
+    lastAction?: string | null
+    lastActionStatus?: string | null
+    lastActionAt?: DateTime | null
+  },
+  cooldownHours = 24
+) {
+  if (profile.lastAction !== 'auto_inbox' || profile.lastActionStatus !== 'success') return false
+  if (!profile.lastActionAt) return false
+  const diffHours = DateTime.now().diff(profile.lastActionAt, 'hours').hours
+  return diffHours >= 0 && diffHours < cooldownHours
 }
 
 type AccountRunResult =
@@ -1880,6 +1906,479 @@ export async function runCampaign(campaignId: string): Promise<void> {
           )
         }
       )
+    } else if (campaign.type === 'auto_like') {
+      if (!accounts.length) throw new Error('Campaign auto like membutuhkan minimal 1 akun.')
+
+      const config = (campaign.config as any) ?? {}
+      if (!config.url) {
+        throw new Error('Campaign auto like membutuhkan URL target.')
+      }
+
+      let batchCursor = 0
+      let completedBatches = 0
+      let activeBatches = 0
+
+      await updateRuntime(
+        {
+          targetType: 'account',
+          totalTargets: accounts.length,
+          processedTargets: 0,
+          successCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          totalBatches: accounts.length,
+          currentAction: 'auto_like',
+          currentLabel: `Menyiapkan ${accounts.length} akun untuk auto like.`,
+        },
+        {
+          completedBatches: 0,
+          activeBatches: 0,
+        }
+      )
+
+      await runPool(accounts, campaign.maxConcurrency, async (campaignAccount) => {
+        batchCursor++
+        const batchNumber = batchCursor
+        activeBatches++
+
+        await updateRuntime(
+          {
+            currentBatch: batchNumber,
+            currentAccountId: campaignAccount.account?.id ?? null,
+            currentAction: 'auto_like',
+            currentLabel: `Batch akun ${batchNumber}/${accounts.length}: ${campaignAccount.account?.label ?? 'Akun'}.`,
+            runningCount: activeBatches,
+          },
+          {
+            batchLabel: `Batch akun ${batchNumber}/${accounts.length}`,
+            currentAccountLabel: campaignAccount.account?.label ?? null,
+            completedBatches,
+            activeBatches,
+          }
+        )
+
+        await withAccount(campaignAccount, async (page) => {
+          const result = await runAutoLike(page, config)
+
+          await log(
+            campaign.id,
+            'auto_like',
+            result.status === 'done' ? 'success' : result.status,
+            result.message,
+            campaignAccount.account?.id
+          )
+
+          await updateRuntime(
+            {
+              processedTargets: runtime.processedTargets + 1,
+              successCount: runtime.successCount + (result.status === 'done' ? 1 : 0),
+              failedCount: runtime.failedCount + (result.status === 'failed' ? 1 : 0),
+              skippedCount: runtime.skippedCount + (result.status === 'skipped' ? 1 : 0),
+              currentAction: 'auto_like',
+              currentLabel: result.message,
+            },
+            null
+          )
+
+          await humanDelay(randomizedCampaignDelay(campaign.maxDelayMs))
+        })
+
+        activeBatches = Math.max(0, activeBatches - 1)
+        completedBatches++
+        await updateRuntime(
+          {
+            runningCount: activeBatches,
+            currentAction: 'auto_like',
+            currentLabel: `Batch akun ${batchNumber}/${accounts.length} selesai.`,
+          },
+          {
+            completedBatches,
+            activeBatches,
+          }
+        )
+      })
+    } else if (campaign.type === 'auto_comment') {
+      if (!accounts.length) throw new Error('Campaign auto comment membutuhkan minimal 1 akun.')
+
+      const config = (campaign.config as any) ?? {}
+      if (!config.url) {
+        throw new Error('Campaign auto comment membutuhkan URL target.')
+      }
+      if (!config.caption) {
+        throw new Error('Campaign auto comment membutuhkan caption comment.')
+      }
+
+      let batchCursor = 0
+      let completedBatches = 0
+      let activeBatches = 0
+
+      await updateRuntime(
+        {
+          targetType: 'account',
+          totalTargets: accounts.length,
+          processedTargets: 0,
+          successCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          totalBatches: accounts.length,
+          currentAction: 'auto_comment',
+          currentLabel: `Menyiapkan ${accounts.length} akun untuk auto comment.`,
+        },
+        {
+          completedBatches: 0,
+          activeBatches: 0,
+        }
+      )
+
+      await runPool(accounts, campaign.maxConcurrency, async (campaignAccount) => {
+        batchCursor++
+        const batchNumber = batchCursor
+        activeBatches++
+
+        await updateRuntime(
+          {
+            currentBatch: batchNumber,
+            currentAccountId: campaignAccount.account?.id ?? null,
+            currentAction: 'auto_comment',
+            currentLabel: `Batch akun ${batchNumber}/${accounts.length}: ${campaignAccount.account?.label ?? 'Akun'}.`,
+            runningCount: activeBatches,
+          },
+          {
+            batchLabel: `Batch akun ${batchNumber}/${accounts.length}`,
+            currentAccountLabel: campaignAccount.account?.label ?? null,
+            completedBatches,
+            activeBatches,
+          }
+        )
+
+        await withAccount(campaignAccount, async (page) => {
+          const result = await runAutoComment(page, config)
+
+          await log(
+            campaign.id,
+            'auto_comment',
+            result.status === 'done' ? 'success' : result.status,
+            result.message,
+            campaignAccount.account?.id
+          )
+
+          await updateRuntime(
+            {
+              processedTargets: runtime.processedTargets + 1,
+              successCount: runtime.successCount + (result.status === 'done' ? 1 : 0),
+              failedCount: runtime.failedCount + (result.status === 'failed' ? 1 : 0),
+              skippedCount: runtime.skippedCount + (result.status === 'skipped' ? 1 : 0),
+              currentAction: 'auto_comment',
+              currentLabel: result.message,
+            },
+            null
+          )
+
+          await humanDelay(randomizedCampaignDelay(campaign.maxDelayMs))
+        })
+
+        activeBatches = Math.max(0, activeBatches - 1)
+        completedBatches++
+        await updateRuntime(
+          {
+            runningCount: activeBatches,
+            currentAction: 'auto_comment',
+            currentLabel: `Batch akun ${batchNumber}/${accounts.length} selesai.`,
+          },
+          {
+            completedBatches,
+            activeBatches,
+          }
+        )
+      })
+    } else if (campaign.type === 'auto_inbox') {
+      if (!accounts.length) throw new Error('Campaign auto inbox membutuhkan minimal 1 akun.')
+
+      const config = (campaign.config as any) ?? {}
+      const inboxDuplicateCooldownHours = 24
+      const targetProfiles = campaign.profiles
+        .map((row) => ({
+          campaignProfileId: row.id,
+          facebookProfileId: row.profile?.id ?? row.profileId,
+          profileId: row.profile?.profileId ?? row.profileId,
+          profileUrl: row.profile?.profileUrl ?? null,
+          profileName: row.profile?.profileName ?? row.profile?.profileId ?? row.profileId,
+          lastAction: row.profile?.lastAction ?? null,
+          lastActionStatus: row.profile?.lastActionStatus ?? null,
+          lastActionAt: row.profile?.lastActionAt ?? null,
+        }))
+        .filter((profile) => Boolean(profile.profileId))
+
+      if (!targetProfiles.length) {
+        throw new Error('Campaign auto inbox membutuhkan profile target dari profile pool.')
+      }
+
+      const chunks = distribute(targetProfiles, accounts.length)
+      const assignments = accounts.map((account, index) => ({ account, profiles: chunks[index] ?? [] }))
+      let batchCursor = 0
+      let completedBatches = 0
+      let activeBatches = 0
+
+      await updateRuntime(
+        {
+          targetType: 'profile',
+          totalTargets: targetProfiles.length,
+          processedTargets: 0,
+          successCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          totalBatches: assignments.length,
+          currentAction: 'auto_inbox',
+          currentLabel: `Menyiapkan ${assignments.length} batch akun untuk auto inbox.`,
+        },
+        {
+          completedBatches: 0,
+          activeBatches: 0,
+          skippedDuplicates: 0,
+        }
+      )
+
+      await runPool(
+        assignments,
+        campaign.maxConcurrency,
+        async ({ account: campaignAccount, profiles }) => {
+          batchCursor++
+          const batchNumber = batchCursor
+          activeBatches++
+
+          await updateRuntime(
+            {
+              currentBatch: batchNumber,
+              currentAccountId: campaignAccount.account?.id ?? null,
+              currentAction: 'auto_inbox',
+              currentLabel: `Batch akun ${batchNumber}/${assignments.length}: ${campaignAccount.account?.label ?? 'Akun'}.`,
+              runningCount: activeBatches,
+            },
+            {
+              batchLabel: `Batch akun ${batchNumber}/${assignments.length}`,
+              currentAccountLabel: campaignAccount.account?.label ?? null,
+              completedBatches,
+              activeBatches,
+            }
+          )
+
+          await withAccount(campaignAccount, async (page) => {
+            for (const targetProfile of profiles) {
+              if (shouldSkipAutoInboxDuplicate(targetProfile, inboxDuplicateCooldownHours)) {
+                const duplicateMessage = `Target "${targetProfile.profileName}" dilewati karena inbox sukses masih dalam cooldown ${inboxDuplicateCooldownHours} jam.`
+
+                const campaignProfile =
+                  campaign.profiles.find((row) => row.id === targetProfile.campaignProfileId) ??
+                  (await CampaignProfile.find(targetProfile.campaignProfileId))
+                if (campaignProfile) {
+                  campaignProfile.status = 'skipped'
+                  await campaignProfile.save()
+                }
+
+                await log(
+                  campaign.id,
+                  'auto_inbox',
+                  'skipped',
+                  duplicateMessage,
+                  campaignAccount.account?.id
+                )
+                await updateProfileLifecycle(targetProfile.facebookProfileId, {
+                  lastAction: 'auto_inbox',
+                  lastActionStatus: 'skipped',
+                  lastActionMessage: duplicateMessage,
+                })
+
+                await updateRuntime(
+                  {
+                    processedTargets: runtime.processedTargets + 1,
+                    skippedCount: runtime.skippedCount + 1,
+                    currentAction: 'auto_inbox',
+                    currentLabel: duplicateMessage,
+                  },
+                  {
+                    currentGroupName: targetProfile.profileName,
+                    currentGroupCode: targetProfile.profileId,
+                    skippedDuplicates: (runtime.meta?.skippedDuplicates ?? 0) + 1,
+                  }
+                )
+
+                await humanDelay(randomizedCampaignDelay(campaign.maxDelayMs))
+                continue
+              }
+
+              await updateRuntime(
+                {
+                  currentAction: 'auto_inbox',
+                  currentLabel: `Memproses inbox ${targetProfile.profileName}.`,
+                  runningCount: activeBatches,
+                },
+                {
+                  currentGroupName: targetProfile.profileName,
+                  currentGroupCode: targetProfile.profileId,
+                }
+              )
+
+              const result = await runAutoInbox(
+                page,
+                {
+                  profileId: targetProfile.profileId,
+                  profileUrl: targetProfile.profileUrl,
+                  profileName: targetProfile.profileName,
+                },
+                config
+              )
+
+              const campaignProfile =
+                campaign.profiles.find((row) => row.id === targetProfile.campaignProfileId) ??
+                (await CampaignProfile.find(targetProfile.campaignProfileId))
+              if (campaignProfile) {
+                campaignProfile.status =
+                  result.status === 'done'
+                    ? 'done'
+                    : result.status === 'skipped'
+                      ? 'skipped'
+                      : 'failed'
+                await campaignProfile.save()
+              }
+
+              await log(
+                campaign.id,
+                'auto_inbox',
+                result.status === 'done' ? 'success' : result.status,
+                result.message,
+                campaignAccount.account?.id
+              )
+              await updateProfileLifecycle(targetProfile.facebookProfileId, {
+                lastAction: 'auto_inbox',
+                lastActionStatus: result.status === 'done' ? 'success' : result.status,
+                lastActionMessage: result.message,
+              })
+
+              await updateRuntime(
+                {
+                  processedTargets: runtime.processedTargets + 1,
+                  successCount: runtime.successCount + (result.status === 'done' ? 1 : 0),
+                  failedCount: runtime.failedCount + (result.status === 'failed' ? 1 : 0),
+                  skippedCount: runtime.skippedCount + (result.status === 'skipped' ? 1 : 0),
+                  currentAction: 'auto_inbox',
+                  currentLabel: result.message,
+                },
+                {
+                  currentGroupName: targetProfile.profileName,
+                  currentGroupCode: targetProfile.profileId,
+                }
+              )
+
+              await humanDelay(randomizedCampaignDelay(campaign.maxDelayMs))
+            }
+          })
+
+          activeBatches = Math.max(0, activeBatches - 1)
+          completedBatches++
+          await updateRuntime(
+            {
+              runningCount: activeBatches,
+              currentAction: 'auto_inbox',
+              currentLabel: `Batch akun ${batchNumber}/${assignments.length} selesai.`,
+            },
+            {
+              completedBatches,
+              activeBatches,
+            }
+          )
+        }
+      )
+    } else if (campaign.type === 'auto_delete') {
+      if (!accounts.length) throw new Error('Campaign auto delete membutuhkan minimal 1 akun.')
+
+      const config = (campaign.config as any) ?? {}
+      if (!config.url) {
+        throw new Error('Campaign auto delete membutuhkan URL target.')
+      }
+
+      let batchCursor = 0
+      let completedBatches = 0
+      let activeBatches = 0
+
+      await updateRuntime(
+        {
+          targetType: 'account',
+          totalTargets: accounts.length,
+          processedTargets: 0,
+          successCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          totalBatches: accounts.length,
+          currentAction: 'auto_delete',
+          currentLabel: `Menyiapkan ${accounts.length} akun untuk auto delete.`,
+        },
+        {
+          completedBatches: 0,
+          activeBatches: 0,
+        }
+      )
+
+      await runPool(accounts, campaign.maxConcurrency, async (campaignAccount) => {
+        batchCursor++
+        const batchNumber = batchCursor
+        activeBatches++
+
+        await updateRuntime(
+          {
+            currentBatch: batchNumber,
+            currentAccountId: campaignAccount.account?.id ?? null,
+            currentAction: 'auto_delete',
+            currentLabel: `Batch akun ${batchNumber}/${accounts.length}: ${campaignAccount.account?.label ?? 'Akun'}.`,
+            runningCount: activeBatches,
+          },
+          {
+            batchLabel: `Batch akun ${batchNumber}/${accounts.length}`,
+            currentAccountLabel: campaignAccount.account?.label ?? null,
+            completedBatches,
+            activeBatches,
+          }
+        )
+
+        await withAccount(campaignAccount, async (page) => {
+          const result = await runAutoDelete(page, config)
+
+          await log(
+            campaign.id,
+            'auto_delete',
+            result.status === 'done' ? 'success' : result.status,
+            result.message,
+            campaignAccount.account?.id
+          )
+
+          await updateRuntime(
+            {
+              processedTargets: runtime.processedTargets + 1,
+              successCount: runtime.successCount + (result.status === 'done' ? 1 : 0),
+              failedCount: runtime.failedCount + (result.status === 'failed' ? 1 : 0),
+              skippedCount: runtime.skippedCount + (result.status === 'skipped' ? 1 : 0),
+              currentAction: 'auto_delete',
+              currentLabel: result.message,
+            },
+            null
+          )
+
+          await humanDelay(randomizedCampaignDelay(campaign.maxDelayMs))
+        })
+
+        activeBatches = Math.max(0, activeBatches - 1)
+        completedBatches++
+        await updateRuntime(
+          {
+            runningCount: activeBatches,
+            currentAction: 'auto_delete',
+            currentLabel: `Batch akun ${batchNumber}/${accounts.length} selesai.`,
+          },
+          {
+            completedBatches,
+            activeBatches,
+          }
+        )
+      })
     } else if (campaign.type === 'auto_confirm') {
       if (!accounts.length) throw new Error('Campaign auto confirm membutuhkan minimal 1 akun.')
 
@@ -2139,9 +2638,37 @@ export async function runCampaign(campaignId: string): Promise<void> {
       )
     } else {
       const config = (campaign.config as any) ?? {}
+      const groupTargets = campaign.groups.map((campaignGroup) => ({
+        campaignGroup,
+        dbGroupId: campaignGroup.group?.id ?? campaignGroup.groupId,
+        groupId: campaignGroup.group?.groupId ?? campaignGroup.groupId,
+        groupUrl: campaignGroup.group?.groupUrl ?? null,
+        groupName: campaignGroup.group?.groupName ?? campaignGroup.group?.groupId ?? campaignGroup.groupId,
+        memberCount: campaignGroup.group?.memberCount ?? null,
+        isManual: false,
+      }))
+      const manualGroupUrl =
+        campaign.type === 'auto_post' ? String(config.manualGroupUrl ?? '').trim() : ''
+      const manualTargets = manualGroupUrl
+        ? [
+            {
+              campaignGroup: null,
+              dbGroupId: null,
+              groupId: 'manual-group-url',
+              groupUrl: manualGroupUrl,
+              groupName: 'Manual Group URL',
+              memberCount: null,
+              isManual: true,
+            },
+          ]
+        : []
+      const runTargets = [...groupTargets, ...manualTargets].filter((target, index, allTargets) => {
+        const identity = target.groupUrl || target.groupId
+        return allTargets.findIndex((item) => (item.groupUrl || item.groupId) === identity) === index
+      })
       // Distribute the group list across accounts (chunked), then run accounts
       // in parallel up to maxConcurrency — so each group is handled once.
-      const chunks = distribute(campaign.groups, accounts.length)
+      const chunks = distribute(runTargets, accounts.length)
       const assignments = accounts.map((account, i) => ({ account, groups: chunks[i] ?? [] }))
       let batchCursor = 0
       let completedBatches = 0
@@ -2150,7 +2677,7 @@ export async function runCampaign(campaignId: string): Promise<void> {
       await updateRuntime(
         {
           targetType: 'group',
-          totalTargets: campaign.groups.length,
+          totalTargets: runTargets.length,
           totalBatches: assignments.length,
           currentAction: campaign.type,
           currentLabel: `Menyiapkan ${assignments.length} batch akun.`,
@@ -2164,7 +2691,7 @@ export async function runCampaign(campaignId: string): Promise<void> {
       await runPool(
         assignments,
         campaign.maxConcurrency,
-        async ({ account: campaignAccount, groups }) => {
+        async ({ account: campaignAccount, groups: assignedTargets }) => {
           batchCursor++
           const batchNumber = batchCursor
           activeBatches++
@@ -2192,22 +2719,25 @@ export async function runCampaign(campaignId: string): Promise<void> {
           )
 
           await withAccount(campaignAccount, async (page) => {
-            for (const campaignGroup of groups) {
-              const group = campaignGroup.group
-              if (!group) continue
+            for (const targetGroup of assignedTargets) {
+              const groupName = targetGroup.groupName ?? targetGroup.groupId
 
               await updateRuntime(
                 {
-                  currentGroupId: group.id,
+                  currentGroupId: targetGroup.dbGroupId,
                   currentAction: campaign.type,
                   currentLabel: `${
-                    campaign.type === 'auto_share' ? 'Auto share' : 'Auto join'
-                  } ${group.groupName ?? group.groupId}.`,
+                    campaign.type === 'auto_share'
+                      ? 'Auto share'
+                      : campaign.type === 'auto_post'
+                        ? 'Auto post'
+                        : 'Auto join'
+                  } ${groupName}.`,
                   runningCount: activeBatches,
                 },
                 {
-                  currentGroupName: group.groupName ?? group.groupId,
-                  currentGroupCode: group.groupId,
+                  currentGroupName: groupName,
+                  currentGroupCode: targetGroup.groupId,
                 }
               )
 
@@ -2218,7 +2748,7 @@ export async function runCampaign(campaignId: string): Promise<void> {
                   'skipped',
                   `Batas join harian (${dailyLimit}) tercapai.`,
                   campaignAccount.account?.id,
-                  group.id
+                  targetGroup.dbGroupId
                 )
                 await updateRuntime({
                   currentAction: campaign.type,
@@ -2226,60 +2756,69 @@ export async function runCampaign(campaignId: string): Promise<void> {
                 })
                 break
               }
-              if (!passesMinGroupMember(group.memberCount, campaign.minGroupMember)) {
-                campaignGroup.status = 'skipped'
-                campaignGroup.processedAt = DateTime.now()
-                await campaignGroup.save()
+              if (!targetGroup.isManual && !passesMinGroupMember(targetGroup.memberCount, campaign.minGroupMember)) {
+                if (targetGroup.campaignGroup) {
+                  targetGroup.campaignGroup.status = 'skipped'
+                  targetGroup.campaignGroup.processedAt = DateTime.now()
+                  await targetGroup.campaignGroup.save()
+                }
                 await log(
                   campaign.id,
                   campaign.type,
                   'skipped',
-                  group.memberCount === null
+                  targetGroup.memberCount === null
                     ? `Dilewati karena member count belum tersedia, minimum ${campaign.minGroupMember}.`
-                    : `Dilewati karena member ${group.memberCount} di bawah minimum ${campaign.minGroupMember}.`,
+                    : `Dilewati karena member ${targetGroup.memberCount} di bawah minimum ${campaign.minGroupMember}.`,
                   campaignAccount.account?.id,
-                  group.id
+                  targetGroup.dbGroupId
                 )
                 await updateRuntime({
                   processedTargets: runtime.processedTargets + 1,
                   skippedCount: runtime.skippedCount + 1,
                   currentLabel:
-                    group.memberCount === null
-                      ? `Lewati ${group.groupName ?? group.groupId}: member count belum tersedia.`
-                      : `Lewati ${group.groupName ?? group.groupId}: member ${group.memberCount} di bawah minimum.`,
+                    targetGroup.memberCount === null
+                      ? `Lewati ${groupName}: member count belum tersedia.`
+                      : `Lewati ${groupName}: member ${targetGroup.memberCount} di bawah minimum.`,
                 })
                 continue
               }
 
-              const target = { groupId: group.groupId, groupUrl: group.groupUrl }
+              const target = { groupId: targetGroup.groupId, groupUrl: targetGroup.groupUrl }
               let result =
                 campaign.type === 'auto_share'
                   ? await runAutoShare(page, target, config)
+                  : campaign.type === 'auto_post'
+                    ? await runAutoPost(page, target, config)
                   : await runAutoJoin(page, target)
 
-              // Retry failed shares (config.retryFailed), up to 3 attempts total.
+              // Retry failed share/post runs (config.retryFailed), up to 3 attempts total.
               let attempts = 1
               while (
-                campaign.type === 'auto_share' &&
+                (campaign.type === 'auto_share' || campaign.type === 'auto_post') &&
                 result.status === 'failed' &&
                 config.retryFailed &&
                 attempts < 3
               ) {
                 await humanDelay(campaign.maxDelayMs)
-                result = await runAutoShare(page, target, config)
+                result =
+                  campaign.type === 'auto_post'
+                    ? await runAutoPost(page, target, config)
+                    : await runAutoShare(page, target, config)
                 attempts++
               }
 
               if (campaign.type === 'auto_join' && result.status === 'done') joinsThisRun++
 
-              campaignGroup.status =
-                result.status === 'done'
-                  ? 'done'
-                  : result.status === 'skipped'
-                    ? 'skipped'
-                    : 'failed'
-              campaignGroup.processedAt = DateTime.now()
-              await campaignGroup.save()
+              if (targetGroup.campaignGroup) {
+                targetGroup.campaignGroup.status =
+                  result.status === 'done'
+                    ? 'done'
+                    : result.status === 'skipped'
+                      ? 'skipped'
+                      : 'failed'
+                targetGroup.campaignGroup.processedAt = DateTime.now()
+                await targetGroup.campaignGroup.save()
+              }
 
               await log(
                 campaign.id,
@@ -2287,7 +2826,7 @@ export async function runCampaign(campaignId: string): Promise<void> {
                 result.status === 'done' ? 'success' : result.status,
                 attempts > 1 ? `${result.message} (percobaan ${attempts})` : result.message,
                 campaignAccount.account?.id,
-                group.id
+                targetGroup.dbGroupId
               )
               await updateRuntime({
                 processedTargets: runtime.processedTargets + 1,

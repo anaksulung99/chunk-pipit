@@ -31,24 +31,9 @@ const mainNavItems: AdminNavItem[] = [
     icon: `material-symbols:campaign`,
   },
   {
-    label: "Proxies",
-    href: "/proxies",
-    icon: `ic:baseline-vpn-lock`,
-  },
-  {
-    label: "Fingerprints",
-    href: "/fingerprints",
-    icon: `material-symbols:fingerprint`,
-  },
-  {
     label: "Accounts",
     href: "/accounts",
     icon: `mdi:facebook`,
-  },
-  {
-    label: "Logs",
-    href: "/logs",
-    icon: `material-symbols:receipt-long`,
   },
   {
     label: "Groups",
@@ -60,18 +45,25 @@ const mainNavItems: AdminNavItem[] = [
     href: "/profiles",
     icon: `lucide:contact`,
   },
-];
-
-const profileNavItems: AdminNavItem[] = [
   {
-    label: "Profile",
-    href: "/settings/profile",
-    icon: `material-symbols:account-circle`,
+    label: "Fingerprints",
+    href: "/fingerprints",
+    icon: `material-symbols:fingerprint`,
   },
   {
-    label: "Personal Settings",
-    href: "/settings/personal-setting",
-    icon: `material-symbols:settings`,
+    label: "Proxies",
+    href: "/proxies",
+    icon: `ic:baseline-vpn-lock`,
+  },
+  {
+    label: "Logs",
+    href: "/logs",
+    icon: `material-symbols:receipt-long`,
+  },
+  {
+    label: "Anti-Detects",
+    href: "/antidetects",
+    icon: `hugeicons:anonymous`,
   },
 ];
 
@@ -128,7 +120,7 @@ const bottomNavItems: AdminNavItem[] = [
 
     <!-- Menu pinned di bawah (Pengaturan, dsb) -->
     <nav class="flex flex-col items-center gap-1 py-4">
-      <AdminSidebarLink
+      <!-- <AdminSidebarLink
         v-for="item in profileNavItems"
         :key="item.href"
         :href="item.href"
@@ -136,8 +128,7 @@ const bottomNavItems: AdminNavItem[] = [
         :icon="item.icon"
         :active="isActive(item.href)"
         @navigate="emit('close')"
-      />
-      <AdminNavUser />
+      /> -->
     </nav>
   </aside>
 </template>

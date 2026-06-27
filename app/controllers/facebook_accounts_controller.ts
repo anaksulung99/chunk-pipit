@@ -681,7 +681,7 @@ export default class FacebookAccountsController {
       return response.redirect().back()
     }
 
-    const healthState = await checkAccountHealth(account)
+    const healthState = await checkAccountHealth(account, false)
     if (healthState === 'server_error') {
       session.flash('error', 'Gagal cek status akun.')
       return response.redirect().back()

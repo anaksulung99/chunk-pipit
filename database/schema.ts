@@ -36,6 +36,67 @@ export class AccountCookySchema extends BaseModel {
   declare value: string
 }
 
+export class AntidetectSchema extends BaseModel {
+  static $columns = ['browserName', 'browserVersion', 'canvasMode', 'canvasSeed', 'createdAt', 'deviceMemory', 'deviceScaleFactor', 'deviceType', 'engine', 'hardwareConcurrency', 'hasTouch', 'id', 'isMobile', 'language', 'locale', 'name', 'osName', 'osVersion', 'proxyId', 'rawFingerprint', 'screenHeight', 'screenWidth', 'timezone', 'updatedAt', 'userAgent', 'userId', 'webglRenderer', 'webglVendor'] as const
+  $columns = AntidetectSchema.$columns
+  @column()
+  declare browserName: string
+  @column()
+  declare browserVersion: string
+  @column()
+  declare canvasMode: string
+  @column()
+  declare canvasSeed: number | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare deviceMemory: number | null
+  @column()
+  declare deviceScaleFactor: number
+  @column()
+  declare deviceType: string
+  @column()
+  declare engine: string
+  @column()
+  declare hardwareConcurrency: number
+  @column()
+  declare hasTouch: boolean
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare isMobile: boolean
+  @column()
+  declare language: string
+  @column()
+  declare locale: string
+  @column()
+  declare name: string
+  @column()
+  declare osName: string
+  @column()
+  declare osVersion: string
+  @column()
+  declare proxyId: string | null
+  @column()
+  declare rawFingerprint: any | null
+  @column()
+  declare screenHeight: number | null
+  @column()
+  declare screenWidth: number | null
+  @column()
+  declare timezone: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare userAgent: string
+  @column()
+  declare userId: string
+  @column()
+  declare webglRenderer: string | null
+  @column()
+  declare webglVendor: string | null
+}
+
 export class AuthAccessTokenSchema extends BaseModel {
   static $columns = ['abilities', 'createdAt', 'expiresAt', 'hash', 'id', 'lastUsedAt', 'name', 'tokenableId', 'type', 'updatedAt'] as const
   $columns = AuthAccessTokenSchema.$columns

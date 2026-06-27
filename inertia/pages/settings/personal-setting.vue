@@ -287,9 +287,9 @@ function toggleEvent(eventKey: NotificationEventKey) {
 </script>
 
 <template>
-  <Head title="Personal Settings" />
+  <Head title="Notification Settings" />
   <App
-    title="Personal Settings"
+    title="Notification Settings"
     description="Atur private notification untuk laporan realtime campaign worker."
   >
     <div class="space-y-4">

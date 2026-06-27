@@ -103,7 +103,16 @@ export default class ProfilesController {
         (item) => Array.isArray(item.tags) && (item.tags as string[]).length > 0
       ).length,
       groupMemberProfile: allOwn.filter((item) => item.sourceType === 'group_member').length,
+      freshProfile: allOwn.filter((item) => item.lifecycleStatus === 'fresh').length,
+      requestedProfile: allOwn.filter((item) => item.lifecycleStatus === 'friend_requested').length,
+      connectedProfile: allOwn.filter((item) => item.lifecycleStatus === 'friend_connected').length,
       invitedProfile: allOwn.filter((item) => item.lifecycleStatus === 'invited').length,
+      failedProfile: allOwn.filter((item) => item.lifecycleStatus === 'failed').length,
+      outgoingRequestProfile: allOwn.filter((item) => item.relationshipStatus === 'outgoing_request')
+        .length,
+      incomingRequestProfile: allOwn.filter((item) => item.relationshipStatus === 'incoming_request')
+        .length,
+      friendRelationshipProfile: allOwn.filter((item) => item.relationshipStatus === 'friend').length,
     }
     const profileTagOptions = Array.from(
       new Set(

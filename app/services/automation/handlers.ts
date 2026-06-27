@@ -28,10 +28,15 @@ type CampaignConfig = {
   caption?: string
   keyword?: string
   friendProfileUrl?: string
+  manualGroupUrl?: string
   sourceType?: string
   pageUrl?: string
   scrapeProfileType?: string
   inviteType?: string
+  postType?: string
+  commentType?: string
+  inboxType?: string
+  deleteType?: string
   confirmType?: string
 }
 
@@ -58,6 +63,43 @@ function normalizeFacebookUrl(value: string | null | undefined) {
     .replace(/\/$/, '')
 }
 
+function facebookPostIdFromUrl(value: string | null | undefined) {
+  const normalized = normalizeFacebookUrl(value)
+  if (!normalized) return null
+
+  try {
+    const parsed = new URL(normalized)
+    const byPath = parsed.pathname.match(/\/posts\/(\d+)/i)?.[1]
+    if (byPath) return byPath
+
+    const storyFbid = parsed.searchParams.get('story_fbid')
+    if (storyFbid) return normalizeText(storyFbid) || null
+
+    const byInsights = parsed.pathname.match(/\/post_insights\/(\d+)/i)?.[1]
+    if (byInsights) return byInsights
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function facebookCommentIdFromUrl(value: string | null | undefined) {
+  const normalized = normalizeFacebookUrl(value)
+  if (!normalized) return null
+
+  try {
+    const parsed = new URL(normalized)
+    const commentId =
+      parsed.searchParams.get('comment_id') || parsed.searchParams.get('reply_comment_id')
+    if (commentId) return normalizeText(commentId) || null
+  } catch {
+    return null
+  }
+
+  return null
+}
+
 function fallbackProfileName(profileId: string | null | undefined) {
   const normalized = normalizeText(profileId)
   if (!normalized) return null
@@ -74,6 +116,57 @@ function fallbackProfileName(profileId: string | null | undefined) {
   if (['facebook', 'meta', 'profile', 'user'].includes(lowered)) return null
 
   return text.replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function randomBetween(min: number, max: number) {
+  const floor = Math.min(min, max)
+  const ceil = Math.max(min, max)
+  return Math.round(floor + Math.random() * (ceil - floor))
+}
+
+function inboxMessageTemplates(value: string | null | undefined) {
+  const normalized = value?.replace(/\r\n/g, '\n').trim() || ''
+  if (!normalized) return []
+
+  return normalized
+    .split(/\n\s*(?:---+|\*{3,}|={3,})\s*\n/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function pickRandomItem<T>(items: T[]) {
+  if (!items.length) return null
+  return items[Math.floor(Math.random() * items.length)] ?? null
+}
+
+function profileFirstName(profileName: string | null | undefined, profileId: string | null | undefined) {
+  const resolved = normalizeText(profileName) || fallbackProfileName(profileId)
+  if (!resolved) return ''
+  return normalizeText(resolved.split(' ')[0])
+}
+
+function renderInboxTemplate(
+  template: string,
+  profile: ProfileTarget & { profileName?: string | null }
+) {
+  const fullName = normalizeText(profile.profileName) || fallbackProfileName(profile.profileId) || 'sob'
+  const firstName = profileFirstName(profile.profileName, profile.profileId) || fullName
+  const profileId = normalizeText(profile.profileId)
+
+  return template
+    .replace(/\{name\}|\{\{\s*name\s*\}\}/gi, fullName)
+    .replace(/\{firstName\}|\{\{\s*firstName\s*\}\}/gi, firstName)
+    .replace(/\{profileId\}|\{\{\s*profileId\s*\}\}/gi, profileId)
+}
+
+function resolveInboxMessage(
+  profile: ProfileTarget & { profileName?: string | null },
+  caption: string | null | undefined
+) {
+  const templates = inboxMessageTemplates(caption)
+  const selected = pickRandomItem(templates)
+  if (!selected) return null
+  return normalizeText(renderInboxTemplate(selected, profile))
 }
 
 async function firstVisibleLocator(root: Page | Locator, selectors: string[]) {
@@ -134,6 +227,135 @@ async function clickBestEffort(locator: Locator) {
       ;(node as HTMLElement).click()
     })
   })
+}
+
+async function resolveTargetPostRoot(page: Page, targetUrl: string) {
+  const postId = facebookPostIdFromUrl(targetUrl)
+  if (!postId) return null
+
+  const marked = await page.evaluate((resolvedPostId) => {
+    document
+      .querySelectorAll('[data-trae-target-post="1"]')
+      .forEach((node) => node.removeAttribute('data-trae-target-post'))
+
+    const candidates = Array.from(document.querySelectorAll('a[href]')).filter((anchor) => {
+      const href = anchor.getAttribute('href') || ''
+      return (
+        href.includes(`/posts/${resolvedPostId}`) ||
+        href.includes(`story_fbid=${resolvedPostId}`) ||
+        href.includes(`/post_insights/${resolvedPostId}`)
+      )
+    })
+
+    const textMarkers = [
+      'comment as',
+      'komentar sebagai',
+      'no comments yet',
+      'belum ada komentar',
+      'view insights',
+      'post reach',
+      'like',
+      'suka',
+    ]
+
+    for (const anchor of candidates) {
+      let current: HTMLElement | null = anchor.parentElement
+      for (let depth = 0; depth < 12 && current; depth++) {
+        const text = (current.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase()
+        const buttonCount = current.querySelectorAll('[role="button"], button').length
+        if (textMarkers.some((item) => text.includes(item)) && buttonCount >= 2) {
+          current.setAttribute('data-trae-target-post', '1')
+          return true
+        }
+        current = current.parentElement
+      }
+    }
+
+    return false
+  }, postId)
+
+  if (!marked) return null
+
+  const root = page.locator('[data-trae-target-post="1"]').first()
+  if ((await root.count()) === 0) return null
+  return root
+}
+
+async function resolveFacebookContinueAs(page: Page) {
+  const continueButton = await firstVisibleLocator(page, [
+    '[aria-label^="Continue as "]',
+    '[aria-label^="Lanjutkan sebagai "]',
+    'div[role="button"]:has-text("Continue as")',
+    'div[role="button"]:has-text("Lanjutkan sebagai")',
+    'button:has-text("Continue as")',
+    'button:has-text("Lanjutkan sebagai")',
+  ])
+
+  if (!continueButton) return false
+
+  await clickBestEffort(continueButton)
+  await humanDelay(2200)
+  return true
+}
+
+async function hasVisibleReactionState(root: Page | Locator) {
+  const reactionSummary = await firstVisibleLocator(root, [
+    '[aria-label^="Like:"]',
+    '[aria-label^="Suka:"]',
+    '[aria-label*="people"]',
+    '[aria-label*="orang"]',
+    '[aria-label="See who reacted to this"]',
+    '[aria-label="Lihat siapa yang bereaksi"]',
+  ])
+
+  return Boolean(reactionSummary)
+}
+
+async function findCommentEditor(root: Page | Locator) {
+  return firstVisibleLocator(root, [
+    '[role="textbox"][contenteditable="true"][aria-label*="Comment"]',
+    '[role="textbox"][contenteditable="true"][aria-label*="Komentar"]',
+    '[role="textbox"][contenteditable="true"][aria-label*="Comment as"]',
+    '[role="textbox"][contenteditable="true"][aria-label*="Komentari sebagai"]',
+    '[contenteditable="true"][aria-label*="Write a comment"]',
+    '[contenteditable="true"][aria-label*="Tulis komentar"]',
+    '[contenteditable="true"][aria-label*="Comment as"]',
+    '[contenteditable="true"][aria-label*="Komentari sebagai"]',
+    '[contenteditable="true"][aria-placeholder*="Write a comment"]',
+    '[contenteditable="true"][aria-placeholder*="Tulis komentar"]',
+    '[contenteditable="true"][aria-placeholder*="Comment as"]',
+    '[contenteditable="true"][aria-placeholder*="Komentari sebagai"]',
+  ])
+}
+
+async function resolveCommentComposerRoot(page: Page, editor: Locator) {
+  const marked = await editor
+    .evaluate((node) => {
+      document
+        .querySelectorAll('[data-trae-comment-composer="1"]')
+        .forEach((item) => item.removeAttribute('data-trae-comment-composer'))
+
+      let current: HTMLElement | null = node as HTMLElement
+      for (let depth = 0; depth < 8 && current; depth++) {
+        if (
+          current.tagName === 'FORM' ||
+          current.querySelector('[aria-label="Post comment"], [aria-label="Kirim komentar"]')
+        ) {
+          current.setAttribute('data-trae-comment-composer', '1')
+          return true
+        }
+        current = current.parentElement
+      }
+
+      return false
+    })
+    .catch(() => false)
+
+  if (!marked) return null
+
+  const root = page.locator('[data-trae-comment-composer="1"]').first()
+  if ((await root.count()) === 0) return null
+  return root
 }
 
 async function waitForVisibleCandidate(
@@ -238,6 +460,42 @@ function isLoginWallText(text: string) {
     'buat akun baru',
     'alamat email atau nomor telepon',
     'kata sandi',
+  ]
+
+  return markers.some((item) => normalized.includes(item))
+}
+
+function isNoFriendRequestText(text: string) {
+  const normalized = normalizeText(text).toLowerCase()
+  if (!normalized) return false
+
+  const markers = [
+    'no new friend requests',
+    'you have no new friend requests',
+    'no friend requests available',
+    'tidak ada permintaan pertemanan baru',
+    'belum ada permintaan pertemanan',
+    'tidak ada permintaan baru',
+  ]
+
+  return markers.some((item) => normalized.includes(item))
+}
+
+function isDeletedContentText(text: string) {
+  const normalized = normalizeText(text).toLowerCase()
+  if (!normalized) return false
+
+  const markers = [
+    "this content isn't available right now",
+    'content not available',
+    "this page isn't available",
+    'this page is not available',
+    'konten ini tidak tersedia saat ini',
+    'halaman ini tidak tersedia',
+    'no comments yet',
+    'belum ada komentar',
+    'comment was deleted',
+    'komentar telah dihapus',
   ]
 
   return markers.some((item) => normalized.includes(item))
@@ -921,35 +1179,731 @@ export async function runAutoShare(
   await page.goto(groupUrl(group), { waitUntil: 'domcontentloaded', timeout: 60000 })
   await humanDelay(2500)
 
+  let pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(pageBodyText)) {
+    const topDialog = await lastVisibleDialog(page)
+    const dialogText = normalizeText(await topDialog?.innerText().catch(() => ''))
+    if (isLoginWallText(dialogText || pageBodyText)) {
+      return {
+        status: 'skipped',
+        message:
+          'Facebook menampilkan login/public wall pada group target, jadi composer posting belum bisa diakses dari session ini.',
+      }
+    }
+  }
+
   const composer = page
     .locator(
       '[role="button"]:has-text("Tulis sesuatu"), [role="button"]:has-text("Write something"), [role="button"]:has-text("Buat postingan")'
     )
     .first()
   if ((await composer.count()) === 0) {
+    pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+    if (isLoginWallText(pageBodyText)) {
+      return {
+        status: 'skipped',
+        message:
+          'Facebook menampilkan login/public wall pada group target, jadi composer posting belum bisa diakses dari session ini.',
+      }
+    }
     return { status: 'skipped', message: 'Composer tidak ditemukan (bukan member / DOM berubah).' }
   }
 
-  await composer.click()
+  await clickBestEffort(composer)
   await humanDelay(1500)
-  const editor = page.locator('[role="textbox"][contenteditable="true"]').first()
-  if ((await editor.count()) === 0)
-    return { status: 'failed', message: 'Editor post tidak ditemukan.' }
 
-  await editor.click()
+  const dialog = await lastVisibleDialog(page)
+  const dialogText = normalizeText(await dialog?.innerText().catch(() => ''))
+  if (isLoginWallText(dialogText)) {
+    return {
+      status: 'skipped',
+      message:
+        'Facebook menampilkan login/public wall saat membuka composer posting, jadi post belum bisa dikirim dari session ini.',
+    }
+  }
+  let editor = dialog
+    ? await firstVisibleLocator(dialog, [
+        '[role="textbox"][contenteditable="true"]:not([aria-label*="Comment"])',
+        '[role="textbox"][contenteditable="true"]:not([aria-label*="Komentar"])',
+        '[role="textbox"][contenteditable="true"]',
+      ])
+    : null
+
+  if (!editor) {
+    editor = await firstVisibleLocator(page, [
+      '[role="dialog"] [role="textbox"][contenteditable="true"]:not([aria-label*="Comment"])',
+      '[role="dialog"] [role="textbox"][contenteditable="true"]:not([aria-label*="Komentar"])',
+      '[role="dialog"] [role="textbox"][contenteditable="true"]',
+    ])
+  }
+
+  if (!editor) {
+    return { status: 'failed', message: 'Editor post tidak ditemukan.' }
+  }
+
+  await clickBestEffort(editor)
   const text = [config.caption, config.url].filter(Boolean).join('\n\n')
   await editor.type(text, { delay: 30 })
   await humanDelay(2000)
 
-  const postBtn = page
-    .locator('[aria-label="Posting"], [aria-label="Post"], div[role="button"]:has-text("Posting")')
-    .first()
-  if ((await postBtn.count()) === 0)
-    return { status: 'failed', message: 'Tombol Post tidak ditemukan.' }
+  const postBtn = dialog
+    ? await firstVisibleLocator(dialog, [
+        '[aria-label="Posting"]',
+        '[aria-label="Post"]',
+        'div[role="button"]:has-text("Posting")',
+        'div[role="button"]:has-text("Post")',
+        'button:has-text("Posting")',
+        'button:has-text("Post")',
+      ])
+    : await firstVisibleLocator(page, [
+        '[role="dialog"] [aria-label="Posting"]',
+        '[role="dialog"] [aria-label="Post"]',
+        '[role="dialog"] div[role="button"]:has-text("Posting")',
+        '[role="dialog"] div[role="button"]:has-text("Post")',
+        '[role="dialog"] button:has-text("Posting")',
+        '[role="dialog"] button:has-text("Post")',
+      ])
+  const resolvedPostBtn =
+    postBtn ||
+    (await firstVisibleLocator(page, [
+      '[aria-label="Posting"]',
+      '[aria-label="Post"]',
+      'div[role="button"]:has-text("Posting")',
+      'div[role="button"]:has-text("Post")',
+      'button:has-text("Posting")',
+      'button:has-text("Post")',
+    ]))
+  if (!resolvedPostBtn)
+    return {
+      status: isLoginWallText(dialogText) ? 'skipped' : 'failed',
+      message: isLoginWallText(dialogText)
+        ? 'Facebook menampilkan login/public wall di modal posting, jadi tombol kirim belum bisa diakses.'
+        : 'Tombol Post tidak ditemukan.',
+    }
 
-  await postBtn.click()
+  await clickBestEffort(resolvedPostBtn)
   await humanDelay(3500)
   return { status: 'done', message: 'Post terkirim (disarankan verifikasi manual).' }
+}
+
+export async function runAutoPost(
+  page: Page,
+  group: GroupTarget,
+  config: Pick<CampaignConfig, 'caption' | 'url'> & { postType?: string }
+): Promise<ActionResult> {
+  if ((config.postType ?? 'group') !== 'group') {
+    return {
+      status: 'skipped',
+      message: 'Auto Post saat ini baru mendukung target group.',
+    }
+  }
+
+  return runAutoShare(page, group, config)
+}
+
+export async function runAutoLike(
+  page: Page,
+  config: Pick<CampaignConfig, 'url'>
+): Promise<ActionResult> {
+  const targetUrl = normalizeFacebookUrl(config.url)
+  if (!targetUrl) {
+    return {
+      status: 'failed',
+      message: 'URL target Auto Like kosong.',
+    }
+  }
+
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
+
+  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(pageBodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall pada URL target like.',
+    }
+  }
+
+  const targetRoot = await resolveTargetPostRoot(page, targetUrl)
+  const searchRoot = targetRoot ?? page
+
+  const unlikeButton = await firstVisibleLocator(searchRoot, [
+    '[aria-label="Unlike"]',
+    '[aria-label="Batal suka"]',
+    '[aria-label*="Unlike"]',
+    '[aria-label*="Batal suka"]',
+    'div[role="button"]:has-text("Unlike")',
+    'div[role="button"]:has-text("Batal suka")',
+    'button:has-text("Unlike")',
+    'button:has-text("Batal suka")',
+  ])
+  if (unlikeButton) {
+    return {
+      status: 'skipped',
+      message: 'Konten tampak sudah di-like oleh akun ini.',
+    }
+  }
+
+  const likeButton = await firstVisibleLocator(searchRoot, [
+    '[aria-label="React"]',
+    '[aria-label="Tanggapi"]',
+    '[aria-label="Like"]',
+    '[aria-label="Suka"]',
+    'div[role="button"]:has-text("Like")',
+    'div[role="button"]:has-text("Suka")',
+    'button:has-text("Like")',
+    'button:has-text("Suka")',
+  ])
+
+  if (!likeButton) {
+    return {
+      status: 'skipped',
+      message: targetRoot
+        ? 'Tombol Like tidak ditemukan pada post target.'
+        : 'Tombol Like tidak ditemukan pada URL target.',
+    }
+  }
+
+  await clickBestEffort(likeButton)
+  await humanDelay(1800)
+
+  const unlikeAfterClick = await firstVisibleLocator(searchRoot, [
+    '[aria-label="Unlike"]',
+    '[aria-label="Batal suka"]',
+    '[aria-label*="Unlike"]',
+    '[aria-label*="Batal suka"]',
+    'div[role="button"]:has-text("Unlike")',
+    'div[role="button"]:has-text("Batal suka")',
+    'button:has-text("Unlike")',
+    'button:has-text("Batal suka")',
+  ])
+  const reactionStateVisible = await hasVisibleReactionState(searchRoot)
+  if (!unlikeAfterClick && !reactionStateVisible) {
+    return {
+      status: 'failed',
+      message: 'Klik Like tidak mengubah state post target.',
+    }
+  }
+
+  return {
+    status: 'done',
+    message: 'Like berhasil dikirim.',
+  }
+}
+
+export async function runAutoComment(
+  page: Page,
+  config: Pick<CampaignConfig, 'url' | 'caption'> & { commentType?: string }
+): Promise<ActionResult> {
+  if ((config.commentType ?? 'post') !== 'post') {
+    return {
+      status: 'skipped',
+      message: 'Auto Comment saat ini baru mendukung target post.',
+    }
+  }
+
+  const targetUrl = normalizeFacebookUrl(config.url)
+  if (!targetUrl) {
+    return {
+      status: 'failed',
+      message: 'URL target Auto Comment kosong.',
+    }
+  }
+
+  const commentText = normalizeText(config.caption)
+  if (!commentText) {
+    return {
+      status: 'failed',
+      message: 'Caption comment kosong.',
+    }
+  }
+
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
+
+  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(pageBodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall pada URL target comment.',
+    }
+  }
+
+  const targetRoot = await resolveTargetPostRoot(page, targetUrl)
+  const searchRoot = targetRoot ?? page
+
+  let editor = (await findCommentEditor(searchRoot)) || (await findCommentEditor(page))
+
+  if (!editor) {
+    const commentButton = await firstVisibleLocator(searchRoot, [
+      '[aria-label="Comment"]',
+      '[aria-label="Komentar"]',
+      '[aria-label="Leave a comment"]',
+      '[aria-label="Tinggalkan komentar"]',
+      'div[role="button"]:has-text("Comment")',
+      'div[role="button"]:has-text("Komentar")',
+      'button:has-text("Comment")',
+      'button:has-text("Komentar")',
+    ])
+
+    if (commentButton) {
+      await clickBestEffort(commentButton)
+      await humanDelay(1500)
+      editor = (await findCommentEditor(searchRoot)) || (await findCommentEditor(page))
+    }
+  }
+
+  if (!editor) {
+    return {
+      status: 'skipped',
+      message: targetRoot
+        ? 'Editor comment tidak ditemukan pada post target.'
+        : 'Editor comment tidak ditemukan pada URL target.',
+    }
+  }
+
+  await clickBestEffort(editor)
+  await editor.type(commentText, { delay: randomBetween(18, 42) })
+  await humanDelay(900)
+
+  const composerRoot = await resolveCommentComposerRoot(page, editor)
+  const submitButton =
+    (composerRoot
+      ? await firstVisibleLocator(composerRoot, [
+          '[aria-label="Post comment"]',
+          '[aria-label="Kirim komentar"]',
+          '[aria-label="Send"]',
+          '[aria-label="Kirim"]',
+          '[aria-label="Comment"]',
+          '[aria-label="Komentar"]',
+          'div[role="button"]:has-text("Post comment")',
+          'div[role="button"]:has-text("Kirim komentar")',
+          'button:has-text("Post comment")',
+          'button:has-text("Kirim komentar")',
+          'div[role="button"]:has-text("Send")',
+          'div[role="button"]:has-text("Kirim")',
+          'button:has-text("Send")',
+          'button:has-text("Kirim")',
+        ])
+      : null) ||
+    (await firstVisibleLocator(searchRoot, [
+      '[aria-label="Post comment"]',
+      '[aria-label="Kirim komentar"]',
+      '[aria-label="Send"]',
+      '[aria-label="Kirim"]',
+      '[aria-label="Comment"]',
+      '[aria-label="Komentar"]',
+      'div[role="button"]:has-text("Post comment")',
+      'div[role="button"]:has-text("Kirim komentar")',
+      'button:has-text("Post comment")',
+      'button:has-text("Kirim komentar")',
+      'div[role="button"]:has-text("Send")',
+      'div[role="button"]:has-text("Kirim")',
+      'button:has-text("Send")',
+      'button:has-text("Kirim")',
+    ])) ||
+    (await firstVisibleLocator(page, [
+      '[aria-label="Post comment"]',
+      '[aria-label="Kirim komentar"]',
+      '[aria-label="Send"]',
+      '[aria-label="Kirim"]',
+      '[aria-label="Comment"]',
+      '[aria-label="Komentar"]',
+      'div[role="button"]:has-text("Post comment")',
+      'div[role="button"]:has-text("Kirim komentar")',
+      'button:has-text("Post comment")',
+      'button:has-text("Kirim komentar")',
+      'div[role="button"]:has-text("Send")',
+      'div[role="button"]:has-text("Kirim")',
+      'button:has-text("Send")',
+      'button:has-text("Kirim")',
+    ]))
+
+  if (submitButton) {
+    await clickBestEffort(submitButton)
+  } else {
+    await editor.press('Enter')
+  }
+
+  await humanDelay(1800)
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
+
+  const refreshedBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const commentAppeared = refreshedBodyText.includes(commentText)
+  if (!commentAppeared) {
+    return {
+      status: 'failed',
+      message: 'Comment belum terverifikasi muncul pada post target.',
+    }
+  }
+
+  return {
+    status: 'done',
+    message: 'Comment berhasil dikirim.',
+  }
+}
+
+async function resolveDeleteMenuButton(
+  page: Page,
+  targetUrl: string,
+  deleteType: 'post' | 'comment'
+) {
+  const targetRoot = deleteType === 'post' ? await resolveTargetPostRoot(page, targetUrl) : null
+
+  const exactSelectors =
+    deleteType === 'comment'
+      ? [
+          '[aria-label="Edit or delete this"]',
+          '[aria-label="Edit or delete this comment"]',
+          '[aria-label="Edit atau hapus komentar ini"]',
+          'div[role="button"]:has-text("Edit or delete this")',
+          'button:has-text("Edit or delete this")',
+        ]
+      : [
+          '[aria-label="Edit or delete this"]',
+          '[aria-label="Edit or delete this post"]',
+          '[aria-label="Actions for this post"]',
+          '[aria-label="Tindakan untuk postingan ini"]',
+          'div[role="button"]:has-text("Edit or delete this")',
+          'button:has-text("Edit or delete this")',
+          'div[role="button"]:has-text("Actions for this post")',
+          'button:has-text("Actions for this post")',
+        ]
+
+  const overflowSelectors =
+    deleteType === 'post'
+      ? [
+          '[aria-label="More"]',
+          '[aria-label="Lainnya"]',
+          'div[role="button"][aria-haspopup="menu"]',
+          'button[aria-haspopup="menu"]',
+        ]
+      : []
+
+  return (
+    (targetRoot ? await firstVisibleLocator(targetRoot, exactSelectors) : null) ||
+    (await firstVisibleLocator(page, exactSelectors)) ||
+    (targetRoot && overflowSelectors.length ? await firstVisibleLocator(targetRoot, overflowSelectors) : null)
+  )
+}
+
+async function resolveDeleteAction(page: Page) {
+  return firstVisibleLocator(page, [
+    '[role="menuitem"]:has-text("Delete")',
+    '[role="menuitem"]:has-text("Hapus")',
+    'div[role="button"]:has-text("Delete")',
+    'div[role="button"]:has-text("Hapus")',
+    'button:has-text("Delete")',
+    'button:has-text("Hapus")',
+  ])
+}
+
+async function resolveDeleteConfirm(page: Page) {
+  return firstVisibleLocator(page, [
+    '[aria-label="Delete"]',
+    '[aria-label="Hapus"]',
+    '[aria-label="Delete post"]',
+    '[aria-label="Delete comment"]',
+    '[aria-label="Hapus postingan"]',
+    '[aria-label="Hapus komentar"]',
+    'button:has-text("Delete")',
+    'button:has-text("Hapus")',
+    'div[role="button"]:has-text("Delete")',
+    'div[role="button"]:has-text("Hapus")',
+  ])
+}
+
+async function verifyDeleteResult(
+  page: Page,
+  targetUrl: string,
+  deleteType: 'post' | 'comment'
+) {
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null)
+  await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
+
+  const bodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isDeletedContentText(bodyText)) return true
+
+  if (deleteType === 'comment') {
+    const commentId = facebookCommentIdFromUrl(targetUrl)
+    if (!commentId) return false
+
+    const commentLinkCount = await page
+      .locator(`a[href*="comment_id=${commentId}"]`)
+      .count()
+      .catch(() => 0)
+    const commentArticleCount = await page
+      .locator(`article:has(a[href*="comment_id=${commentId}"])`)
+      .count()
+      .catch(() => 0)
+
+    return commentLinkCount === 0 && commentArticleCount === 0
+  }
+
+  const postId = facebookPostIdFromUrl(targetUrl)
+  if (!postId) return false
+
+  const targetRoot = await resolveTargetPostRoot(page, targetUrl)
+  const postLinkCount = await page
+    .locator(
+      `a[href*="/posts/${postId}"], a[href*="story_fbid=${postId}"], a[href*="/post_insights/${postId}"]`
+    )
+    .count()
+    .catch(() => 0)
+
+  return postLinkCount === 0 && !targetRoot
+}
+
+export async function runAutoDelete(
+  page: Page,
+  config: Pick<CampaignConfig, 'url'> & { deleteType?: string }
+): Promise<ActionResult> {
+  const deleteType = (config.deleteType ?? 'post') as 'post' | 'comment'
+  if (!['post', 'comment'].includes(deleteType)) {
+    return {
+      status: 'skipped',
+      message: `Tipe delete "${config.deleteType}" belum didukung.`,
+    }
+  }
+
+  const targetUrl = normalizeFacebookUrl(config.url)
+  if (!targetUrl) {
+    return {
+      status: 'failed',
+      message: 'URL target Auto Delete kosong.',
+    }
+  }
+
+  if (deleteType === 'comment' && !facebookCommentIdFromUrl(targetUrl)) {
+    return {
+      status: 'failed',
+      message: 'URL target comment belum dikenali sebagai permalink comment.',
+    }
+  }
+
+  if (deleteType === 'post' && !facebookPostIdFromUrl(targetUrl)) {
+    return {
+      status: 'failed',
+      message: 'URL target post belum dikenali sebagai permalink post.',
+    }
+  }
+
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
+
+  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(pageBodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall pada URL target delete.',
+    }
+  }
+
+  const menuButton = await resolveDeleteMenuButton(page, targetUrl, deleteType)
+  if (!menuButton) {
+    return {
+      status: 'skipped',
+      message:
+        deleteType === 'comment'
+          ? 'Menu edit/delete comment tidak ditemukan pada target.'
+          : 'Menu edit/delete post tidak ditemukan pada target.',
+    }
+  }
+
+  await clickBestEffort(menuButton)
+  await humanDelay(1500)
+
+  const deleteAction = await resolveDeleteAction(page)
+  if (!deleteAction) {
+    return {
+      status: 'skipped',
+      message: `Aksi Delete untuk ${deleteType} tidak muncul pada menu target.`,
+    }
+  }
+
+  await clickBestEffort(deleteAction)
+  await humanDelay(1800)
+
+  const deleteConfirm = await resolveDeleteConfirm(page)
+  if (deleteConfirm) {
+    await clickBestEffort(deleteConfirm)
+    await humanDelay(2200)
+  }
+
+  const deleted = await verifyDeleteResult(page, targetUrl, deleteType)
+  if (!deleted) {
+    return {
+      status: 'failed',
+      message: `${deleteType === 'comment' ? 'Comment' : 'Post'} belum terverifikasi terhapus.`,
+    }
+  }
+
+  return {
+    status: 'done',
+    message: `${deleteType === 'comment' ? 'Comment' : 'Post'} berhasil dihapus.`,
+  }
+}
+
+export async function runAutoInbox(
+  page: Page,
+  profile: ProfileTarget & { profileName?: string | null },
+  config: Pick<CampaignConfig, 'caption'> & { inboxType?: string }
+): Promise<ActionResult> {
+  if ((config.inboxType ?? 'friend') !== 'friend') {
+    return {
+      status: 'skipped',
+      message: 'Auto Inbox saat ini baru mendukung target friend.',
+    }
+  }
+
+  const messageText = resolveInboxMessage(profile, config.caption)
+  if (!messageText) {
+    return {
+      status: 'failed',
+      message: 'Template inbox kosong atau tidak valid.',
+    }
+  }
+
+  await page.goto(profileUrl(profile), { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await humanDelay(2500)
+
+  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(pageBodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall pada profile target.',
+    }
+  }
+
+  const messageButton = await firstVisibleLocator(page, [
+    '[aria-label="Message"]',
+    '[aria-label="Pesan"]',
+    '[aria-label*="Message"]',
+    '[aria-label*="Pesan"]',
+    'div[role="button"]:has-text("Message")',
+    'div[role="button"]:has-text("Pesan")',
+    'a:has-text("Message")',
+    'a:has-text("Pesan")',
+    'button:has-text("Message")',
+    'button:has-text("Pesan")',
+  ])
+
+  if (!messageButton) {
+    return {
+      status: 'skipped',
+      message: 'Tombol Message tidak ditemukan pada profile target.',
+    }
+  }
+
+  await clickBestEffort(messageButton)
+  await humanDelay(2000)
+
+  let dialog = await lastVisibleDialog(page)
+  let dialogText = normalizeText(await dialog?.innerText().catch(() => ''))
+
+  let editor = dialog
+    ? await firstVisibleLocator(dialog, [
+        '[role="textbox"][contenteditable="true"]:not([aria-label*="Search"]):not([aria-label*="Cari"])',
+        '[contenteditable="true"][aria-label*="Message"]',
+        '[contenteditable="true"][aria-label*="Pesan"]',
+        '[contenteditable="true"][aria-label*="Write to"]',
+        '[role="textbox"][contenteditable="true"]',
+        '[contenteditable="true"]',
+      ])
+    : null
+
+  if (!editor) {
+    const newMessageButton = await firstVisibleLocator(page, [
+      '[aria-label="New message"]',
+      '[aria-label="Pesan baru"]',
+      'div[role="button"]:has-text("New message")',
+      'div[role="button"]:has-text("Pesan baru")',
+      'button:has-text("New message")',
+      'button:has-text("Pesan baru")',
+    ])
+    if (newMessageButton) {
+      await clickBestEffort(newMessageButton)
+      await humanDelay(1600)
+      dialog = await lastVisibleDialog(page)
+      dialogText = normalizeText(await dialog?.innerText().catch(() => ''))
+      editor = dialog
+        ? await firstVisibleLocator(dialog, [
+            '[role="textbox"][contenteditable="true"]:not([aria-label*="Search"]):not([aria-label*="Cari"])',
+            '[contenteditable="true"][aria-label*="Message"]',
+            '[contenteditable="true"][aria-label*="Pesan"]',
+            '[contenteditable="true"][aria-label*="Write to"]',
+            '[role="textbox"][contenteditable="true"]',
+            '[contenteditable="true"]',
+          ])
+        : null
+    }
+  }
+
+  if (isLoginWallText(dialogText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall saat membuka inbox target.',
+    }
+  }
+
+  if (!editor) {
+    editor = await firstVisibleLocator(page, [
+      '[role="dialog"] [role="textbox"][contenteditable="true"]:not([aria-label*="Search"]):not([aria-label*="Cari"])',
+      '[role="dialog"] [contenteditable="true"][aria-label*="Message"]',
+      '[role="dialog"] [contenteditable="true"][aria-label*="Pesan"]',
+      '[role="dialog"] [contenteditable="true"][aria-label*="Write to"]',
+      '[role="dialog"] [role="textbox"][contenteditable="true"]',
+      '[role="dialog"] [contenteditable="true"]',
+      '[contenteditable="true"][aria-label*="Write to"]',
+      '[contenteditable="true"][aria-label^="Write to"]',
+      '[contenteditable="true"][aria-placeholder="Aa"]',
+    ])
+  }
+
+  if (!editor) {
+    return {
+      status: 'failed',
+      message: 'Editor inbox tidak ditemukan.',
+    }
+  }
+
+  await clickBestEffort(editor)
+  await editor.type(messageText, { delay: randomBetween(18, 42) })
+  await humanDelay(900)
+
+  const sendButton = await firstVisibleLocator(page, [
+    '[aria-label="Send"]',
+    '[aria-label="Kirim"]',
+    '[aria-label*="send"]',
+    '[aria-label*="kirim"]',
+    'div[role="button"]:has-text("Send")',
+    'div[role="button"]:has-text("Kirim")',
+    'button:has-text("Send")',
+    'button:has-text("Kirim")',
+  ])
+
+  if (sendButton) {
+    await clickBestEffort(sendButton)
+  } else {
+    await editor.press('Enter')
+  }
+
+  await humanDelay(1800)
+  return {
+    status: 'done',
+    message: 'Inbox terkirim (disarankan verifikasi manual).',
+  }
 }
 
 export async function runAutoJoin(page: Page, group: GroupTarget): Promise<ActionResult> {
@@ -992,10 +1946,19 @@ export async function runAutoAddFriend(page: Page, profile: ProfileTarget): Prom
 export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promise<ActionResult> {
   await page.goto(profileUrl(profile), { waitUntil: 'domcontentloaded', timeout: 60000 })
   await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
 
   const bodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
   if (!bodyText) {
     return { status: 'failed', message: 'Halaman profile gagal dimuat.' }
+  }
+
+  if (isLoginWallText(bodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall pada profile target.',
+    }
   }
 
   if (/add friend|tambahkan teman/i.test(bodyText)) {
@@ -1026,7 +1989,25 @@ export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promi
   await clickBestEffort(friendshipButton)
   await humanDelay(1500)
 
-  const unfriendButton = await firstVisibleLocator(page, [
+  const activeDialog = await lastVisibleDialog(page)
+  const unfriendButton =
+    (activeDialog
+      ? await firstVisibleLocator(activeDialog, [
+          '[aria-label="Unfriend"]',
+          '[aria-label="Hapus pertemanan"]',
+          '[aria-label="Batalkan pertemanan"]',
+          '[role="menuitem"]:has-text("Unfriend")',
+          '[role="menuitem"]:has-text("Hapus pertemanan")',
+          '[role="menuitem"]:has-text("Batalkan pertemanan")',
+          'div[role="button"]:has-text("Unfriend")',
+          'div[role="button"]:has-text("Hapus pertemanan")',
+          'div[role="button"]:has-text("Batalkan pertemanan")',
+          'button:has-text("Unfriend")',
+          'button:has-text("Hapus pertemanan")',
+          'button:has-text("Batalkan pertemanan")',
+        ])
+      : null) ||
+    (await firstVisibleLocator(page, [
     '[aria-label="Unfriend"]',
     '[aria-label="Hapus pertemanan"]',
     '[aria-label="Batalkan pertemanan"]',
@@ -1039,7 +2020,7 @@ export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promi
     'button:has-text("Unfriend")',
     'button:has-text("Hapus pertemanan")',
     'button:has-text("Batalkan pertemanan")',
-  ])
+    ]))
 
   if (!unfriendButton) {
     await closeTopDialog(page)
@@ -1052,30 +2033,88 @@ export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promi
   await clickBestEffort(unfriendButton)
   await humanDelay(1800)
 
-  const confirmUnfriendButton = await firstVisibleLocator(page, [
-    '[aria-label="Confirm"]',
-    '[aria-label="Konfirmasi"]',
-    '[aria-label="Unfriend"]',
-    '[aria-label="Hapus pertemanan"]',
-    '[aria-label="Batalkan pertemanan"]',
-    'div[role="button"]:has-text("Confirm")',
-    'div[role="button"]:has-text("Konfirmasi")',
-    'div[role="button"]:has-text("Unfriend")',
-    'div[role="button"]:has-text("Hapus pertemanan")',
-    'div[role="button"]:has-text("Batalkan pertemanan")',
-    'button:has-text("Confirm")',
-    'button:has-text("Konfirmasi")',
-    'button:has-text("Unfriend")',
-    'button:has-text("Hapus pertemanan")',
-    'button:has-text("Batalkan pertemanan")',
-  ])
+  const confirmDialog = await lastVisibleDialog(page)
+  const confirmUnfriendButton =
+    (confirmDialog
+      ? await firstVisibleLocator(confirmDialog, [
+          '[aria-label="Confirm"]',
+          '[aria-label="Konfirmasi"]',
+          '[aria-label="Unfriend"]',
+          '[aria-label="Hapus pertemanan"]',
+          '[aria-label="Batalkan pertemanan"]',
+          'div[role="button"]:has-text("Confirm")',
+          'div[role="button"]:has-text("Konfirmasi")',
+          'div[role="button"]:has-text("Unfriend")',
+          'div[role="button"]:has-text("Hapus pertemanan")',
+          'div[role="button"]:has-text("Batalkan pertemanan")',
+          'button:has-text("Confirm")',
+          'button:has-text("Konfirmasi")',
+          'button:has-text("Unfriend")',
+          'button:has-text("Hapus pertemanan")',
+          'button:has-text("Batalkan pertemanan")',
+        ])
+      : null) ||
+    (await firstVisibleLocator(page, [
+      '[aria-label="Confirm"]',
+      '[aria-label="Konfirmasi"]',
+      '[aria-label="Unfriend"]',
+      '[aria-label="Hapus pertemanan"]',
+      '[aria-label="Batalkan pertemanan"]',
+      'div[role="button"]:has-text("Confirm")',
+      'div[role="button"]:has-text("Konfirmasi")',
+      'div[role="button"]:has-text("Unfriend")',
+      'div[role="button"]:has-text("Hapus pertemanan")',
+      'div[role="button"]:has-text("Batalkan pertemanan")',
+      'button:has-text("Confirm")',
+      'button:has-text("Konfirmasi")',
+      'button:has-text("Unfriend")',
+      'button:has-text("Hapus pertemanan")',
+      'button:has-text("Batalkan pertemanan")',
+    ]))
 
   if (confirmUnfriendButton) {
     await clickBestEffort(confirmUnfriendButton)
     await humanDelay(1800)
   }
 
-  return { status: 'done', message: 'Pertemanan berhasil diputus dari profile target.' }
+  await page.goto(profileUrl(profile), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null)
+  await humanDelay(2200)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
+
+  const refreshedBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(refreshedBodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall saat verifikasi hasil unfriend.',
+    }
+  }
+
+  if (/add friend|tambahkan teman/i.test(refreshedBodyText)) {
+    return { status: 'done', message: 'Pertemanan berhasil diputus dari profile target.' }
+  }
+
+  const friendshipButtonAfter = await firstVisibleLocator(page, [
+    '[aria-label="Friends"]',
+    '[aria-label="Teman"]',
+    '[aria-label*="Friends"]',
+    '[aria-label*="Teman"]',
+    'div[role="button"]:has-text("Friends")',
+    'div[role="button"]:has-text("Teman")',
+    'button:has-text("Friends")',
+    'button:has-text("Teman")',
+  ])
+  if (friendshipButtonAfter) {
+    return {
+      status: 'failed',
+      message: 'Status pertemanan belum terverifikasi berubah setelah unfriend.',
+    }
+  }
+
+  return {
+    status: 'done',
+    message: 'Aksi unfriend dijalankan dan tombol friendship sudah tidak terlihat lagi.',
+  }
 }
 
 export async function runAutoConfirm(
@@ -1095,28 +2134,71 @@ export async function runAutoConfirm(
     timeout: 60000,
   })
   await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
 
-  const confirmButtons = page.locator(
-    '[aria-label="Konfirmasi"], [aria-label="Confirm"], div[role="button"]:has-text("Konfirmasi"), div[role="button"]:has-text("Confirm")'
-  )
-
-  const initialCount = await confirmButtons.count()
-  if (initialCount === 0) {
+  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(pageBodyText)) {
     return {
       status: 'skipped',
-      message: 'Tidak ada permintaan pertemanan yang siap dikonfirmasi.',
+      message: 'Facebook menampilkan login/public wall pada halaman friend requests.',
+      processedCount: 0,
+    }
+  }
+
+  const confirmSelectors = [
+    '[aria-label="Konfirmasi"]',
+    '[aria-label="Confirm"]',
+    'button:text-is("Konfirmasi")',
+    'button:text-is("Confirm")',
+    'div[role="button"]:text-is("Konfirmasi")',
+    'div[role="button"]:text-is("Confirm")',
+  ]
+  const mainContent = page.locator('[role="main"]').first()
+  const resolveConfirmButton = async () =>
+    (await firstVisibleLocator(mainContent, confirmSelectors)) ||
+    (await firstVisibleLocator(page, confirmSelectors))
+
+  const initialButton = await resolveConfirmButton()
+  if (!initialButton) {
+    return {
+      status: isNoFriendRequestText(pageBodyText) ? 'skipped' : 'failed',
+      message: isNoFriendRequestText(pageBodyText)
+        ? 'Tidak ada permintaan pertemanan yang siap dikonfirmasi.'
+        : 'Tombol Confirm tidak ditemukan pada halaman friend requests.',
       processedCount: 0,
     }
   }
 
   let processedCount = 0
-  const maxProcessed = Math.min(initialCount, 10)
+  const maxProcessed = 10
   for (let index = 0; index < maxProcessed; index++) {
-    const button = confirmButtons.first()
-    if ((await button.count()) === 0) break
-    await button.click()
+    const button = await resolveConfirmButton()
+    if (!button) break
+
+    await clickBestEffort(button)
     processedCount++
-    await humanDelay(1800)
+    await humanDelay(2000)
+
+    const refreshedBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+    if (isLoginWallText(refreshedBodyText)) {
+      return {
+        status: processedCount > 0 ? 'done' : 'skipped',
+        message:
+          processedCount > 0
+            ? `${processedCount} permintaan pertemanan dikonfirmasi sebelum Facebook menampilkan login/public wall.`
+            : 'Facebook menampilkan login/public wall saat memproses friend requests.',
+        processedCount,
+      }
+    }
+  }
+
+  if (processedCount === 0) {
+    return {
+      status: 'skipped',
+      message: 'Tidak ada permintaan pertemanan yang berhasil dikonfirmasi.',
+      processedCount: 0,
+    }
   }
 
   return {

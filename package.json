@@ -101,6 +101,7 @@
     "@adonisjs/eslint-config": "^3.1.0",
     "@adonisjs/prettier-config": "^1.5.0",
     "@adonisjs/tsconfig": "^2.0.0",
+    "@iconify-json/fluent-color": "^1.2.21",
     "@iconify-json/heroicons": "^1.2.3",
     "@iconify-json/hugeicons": "^1.2.29",
     "@iconify-json/ic": "^1.2.4",
