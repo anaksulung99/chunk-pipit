@@ -127,6 +127,7 @@ const props = defineProps<{
     sourceUrl: string | null;
     sourceType: string;
     tags: string | null;
+    lifecycleStatus: string;
     relationshipStatus: string;
     lastAction: string | null;
     lastActionAt: string | null;
@@ -426,6 +427,43 @@ const getFbStatusColor = (k: string) =>
     logged_out: "bg-muted-foreground/40 text-muted-foreground",
     banned: "bg-red-500 text-white",
   }[k] ?? "bg-muted-foreground/40 text-muted-foreground");
+
+const lifecycleBadge = (status: string) =>
+  ({
+    fresh: "bg-muted text-muted-foreground",
+    friend_requested: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+    friend_connected: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    invited: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+    failed: "bg-red-500/15 text-red-600 dark:text-red-400",
+  }[status] ?? "bg-muted text-muted-foreground");
+
+const relationshipBadge = (status: string) =>
+  ({
+    friend: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    outgoing_request: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+    incoming_request: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+    unknown: "bg-muted text-muted-foreground",
+  }[status] ?? "bg-muted text-muted-foreground");
+
+const profileLifecycleSummary = computed(() => {
+  const profiles = props.fbProfiles ?? [];
+  return {
+    fresh: profiles.filter((item) => item.lifecycleStatus === "fresh").length,
+    requested: profiles.filter((item) => item.lifecycleStatus === "friend_requested").length,
+    connected: profiles.filter((item) => item.lifecycleStatus === "friend_connected").length,
+    invited: profiles.filter((item) => item.lifecycleStatus === "invited").length,
+    failed: profiles.filter((item) => item.lifecycleStatus === "failed").length,
+  };
+});
+
+const profileRelationshipSummary = computed(() => {
+  const profiles = props.fbProfiles ?? [];
+  return {
+    outgoing: profiles.filter((item) => item.relationshipStatus === "outgoing_request").length,
+    incoming: profiles.filter((item) => item.relationshipStatus === "incoming_request").length,
+    friend: profiles.filter((item) => item.relationshipStatus === "friend").length,
+  };
+});
 </script>
 
 <template>
@@ -1081,6 +1119,60 @@ const getFbStatusColor = (k: string) =>
             </Button>
           </div>
         </div>
+        <div class="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr]">
+          <div class="rounded-lg border border-border bg-background p-3">
+            <div>
+              <h4 class="text-sm font-medium">Funnel Lifecycle Profile</h4>
+              <p class="text-xs text-muted-foreground">
+                Membaca cepat alur profile dari pool mentah ke tahap koneksi dan invite.
+              </p>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-5">
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Fresh</div>
+                <div class="mt-1 text-lg font-semibold">{{ profileLifecycleSummary.fresh }}</div>
+              </div>
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Requested</div>
+                <div class="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">{{ profileLifecycleSummary.requested }}</div>
+              </div>
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Connected</div>
+                <div class="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{{ profileLifecycleSummary.connected }}</div>
+              </div>
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Invited</div>
+                <div class="mt-1 text-lg font-semibold text-violet-600 dark:text-violet-400">{{ profileLifecycleSummary.invited }}</div>
+              </div>
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Failed</div>
+                <div class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">{{ profileLifecycleSummary.failed }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg border border-border bg-background p-3">
+            <div>
+              <h4 class="text-sm font-medium">Relationship Snapshot</h4>
+              <p class="text-xs text-muted-foreground">
+                Status hubungan aktual yang tersimpan pada profile tim ini.
+              </p>
+            </div>
+            <div class="mt-3 grid grid-cols-3 gap-3">
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Outgoing</div>
+                <div class="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">{{ profileRelationshipSummary.outgoing }}</div>
+              </div>
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Incoming</div>
+                <div class="mt-1 text-lg font-semibold text-amber-600 dark:text-amber-400">{{ profileRelationshipSummary.incoming }}</div>
+              </div>
+              <div class="rounded-md border border-border bg-card px-3 py-2">
+                <div class="text-[11px] text-muted-foreground">Friend</div>
+                <div class="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{{ profileRelationshipSummary.friend }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div
           class="hidden md:block overflow-x-auto border border-border bg-background p-2"
         >
@@ -1094,6 +1186,7 @@ const getFbStatusColor = (k: string) =>
                 <th class="px-4 py-3 text-left font-medium">Total Follower</th>
                 <th class="px-4 py-3 text-left font-medium">Total Following</th>
                 <th class="px-4 py-3 text-left font-medium">Total Friend</th>
+                <th class="px-4 py-3 text-left font-medium">Lifecycle</th>
                 <th class="px-4 py-3 text-left font-medium">Source URL</th>
                 <th class="px-4 py-3 text-left font-medium">Created</th>
               </tr>
@@ -1122,6 +1215,39 @@ const getFbStatusColor = (k: string) =>
                 <td class="px-4 py-3">{{ p.followingCount }}</td>
                 <td class="px-4 py-3">{{ p.friendCount }}</td>
                 <td class="px-4 py-3">
+                  <div class="space-y-1 text-xs">
+                    <div class="flex flex-wrap gap-1">
+                      <span
+                        :class="
+                          cn(
+                            'inline-flex rounded-full px-2 py-0.5 text-[10px] capitalize',
+                            lifecycleBadge(p.lifecycleStatus)
+                          )
+                        "
+                      >
+                        {{ p.lifecycleStatus.replaceAll("_", " ") }}
+                      </span>
+                      <span
+                        :class="
+                          cn(
+                            'inline-flex rounded-full px-2 py-0.5 text-[10px] capitalize',
+                            relationshipBadge(p.relationshipStatus)
+                          )
+                        "
+                      >
+                        {{ p.relationshipStatus.replaceAll("_", " ") }}
+                      </span>
+                    </div>
+                    <div v-if="p.lastAction" class="text-muted-foreground">
+                      {{ actionLabel(p.lastAction) }}
+                      <span v-if="p.lastActionStatus">· {{ p.lastActionStatus }}</span>
+                    </div>
+                    <div v-if="p.lastActionAt" class="text-muted-foreground">
+                      {{ fmt(p.lastActionAt) }}
+                    </div>
+                  </div>
+                </td>
+                <td class="px-4 py-3">
                   <a
                     v-if="p.sourceUrl"
                     :href="p.sourceUrl"
@@ -1139,10 +1265,10 @@ const getFbStatusColor = (k: string) =>
         </div>
 
         <div
-          v-if="!props.fbGroups?.length"
+          v-if="!props.fbProfiles?.length"
           class="text-center py-8 text-muted-foreground"
         >
-          <p>No Facebook groups found</p>
+          <p>No Facebook profiles found</p>
         </div>
       </section>
     </div>

@@ -5,6 +5,7 @@ import Proxy from '#models/proxy'
 import FingerprintProfile from '#models/fingerprint_profile'
 import SessionLog from '#models/session_log'
 import FacebookProfile from '#models/facebook_profile'
+import Antidetect from '#models/antidetect'
 import type { HttpContext } from '@adonisjs/core/http'
 import { DateTime } from 'luxon'
 
@@ -70,7 +71,8 @@ export default class DashboardController {
       accountRows,
       proxyRows,
       fingerprintCount,
-      facebookProfileCount,
+      facebookProfileRows,
+      antidetectCount,
       analyticsLogs,
     ] = await Promise.all([
       Campaign.query().where('user_id', userId).select('status', 'type'),
@@ -78,7 +80,8 @@ export default class DashboardController {
       FacebookAccount.query().where('user_id', userId).select('session_status'),
       Proxy.query().where('user_id', userId).select('status'),
       FingerprintProfile.query().where('user_id', userId).count('* as total'),
-      FacebookProfile.query().where('user_id', userId).count('* as totalProfiles'),
+      FacebookProfile.query().where('user_id', userId).select('lifecycle_status', 'relationship_status'),
+      Antidetect.query().where('user_id', userId).count('* as totalAntidetects'),
       SessionLog.query()
         .whereHas('campaign', (c) => c.where('user_id', userId))
         .where('created_at', '>=', analyticsStart.toSQL()!)
@@ -217,7 +220,10 @@ export default class DashboardController {
         },
         proxies: { total: proxyRows.length, byStatus: tally(proxyRows.map((p) => p.status)) },
         fingerprints: Number((fingerprintCount[0] as any).$extras.total ?? 0),
-        facebookProfiles: Number((facebookProfileCount[0] as any).$extras.totalProfiles ?? 0),
+        facebookProfiles: facebookProfileRows.length,
+        profileLifecycle: tally(facebookProfileRows.map((profile) => profile.lifecycleStatus)),
+        profileRelationship: tally(facebookProfileRows.map((profile) => profile.relationshipStatus)),
+        antidetects: Number((antidetectCount[0] as any).$extras.totalAntidetects ?? 0),
         today: {
           total: todayActions.length,
           success: todayByStatus.success ?? 0,

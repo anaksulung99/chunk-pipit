@@ -361,7 +361,7 @@ const inviteTypeOptions = [
   {
     label: "Event",
     value: "event",
-    active: true,
+    active: false,
   },
 ];
 const postTypeOptions = [
@@ -752,10 +752,16 @@ const createTypeOptions = [
                   v-for="option in inviteTypeOptions"
                   :key="option.value"
                   :value="option.value"
+                  :disabled="!option.active"
                 >
-                  {{ option.label }}
+                  {{ option.label }}{{ option.active ? "" : " (Soon)" }}
                 </option>
               </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Foundation `Auto Invite` yang aktif saat ini fokus ke target
+                <code>group</code> dan <code>page follower</code>. Jalur
+                <code>event</code> masih diparkir dulu agar hasil tetap jujur.
+              </p>
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium">URL Target Invite</label>
@@ -766,8 +772,8 @@ const createTypeOptions = [
                 placeholder="https://facebook.com/..."
               />
               <p class="mt-1 text-xs text-muted-foreground">
-                Isi URL group, halaman, atau event yang akan menerima invite dari profile
-                pool terpilih.
+                Isi URL group atau halaman yang akan menerima invite dari profile pool
+                terpilih.
               </p>
             </div>
           </template>

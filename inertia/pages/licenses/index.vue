@@ -148,20 +148,8 @@ function bulk(action: 'suspend' | 'reactivate') {
   )
 }
 
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    perPage: table.perPage.value,
-    search: table.search.value,
-    status: table.filters.status,
-    order: table.filters.order,
-    sort: table.filters.sort,
-    startDate: table.filters.startDate,
-    endDate: table.filters.endDate,
-  }
-}
 function refresh() {
-  router.get('/licenses', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 
 const statsCard = [

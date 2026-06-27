@@ -16,6 +16,7 @@ import {
   TrendingUp,
   BarChart3,
   CalendarDays,
+  HatGlasses,
 } from "@lucide/vue";
 
 type Tally = Record<string, number>;
@@ -57,6 +58,9 @@ const props = defineProps<{
     proxies: { total: number; byStatus: Tally };
     fingerprints: number;
     facebookProfiles: number;
+    profileLifecycle: Tally;
+    profileRelationship: Tally;
+    antidetects: number;
     today: { total: number; success: number; failed: number };
   };
   running: { id: string; name: string; type: string; total: number; done: number }[];
@@ -138,6 +142,13 @@ const kpis = [
     sub: "profil",
     icon: Fingerprint,
     color: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    label: "Antidetects",
+    value: props.stats.antidetects,
+    sub: "profil",
+    icon: HatGlasses,
+    color: "text-muted-foreground",
   },
   {
     label: "Aksi Hari Ini",
@@ -369,6 +380,52 @@ const analyticsCards = computed(() => [
   },
 ]);
 
+const profileLifecycleCards = computed(() => [
+  {
+    label: "Fresh",
+    value: n(props.stats.profileLifecycle, "fresh"),
+    tone: "text-muted-foreground",
+  },
+  {
+    label: "Requested",
+    value: n(props.stats.profileLifecycle, "friend_requested"),
+    tone: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    label: "Connected",
+    value: n(props.stats.profileLifecycle, "friend_connected"),
+    tone: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    label: "Invited",
+    value: n(props.stats.profileLifecycle, "invited"),
+    tone: "text-violet-600 dark:text-violet-400",
+  },
+  {
+    label: "Failed",
+    value: n(props.stats.profileLifecycle, "failed"),
+    tone: "text-red-600 dark:text-red-400",
+  },
+]);
+
+const profileRelationshipCards = computed(() => [
+  {
+    label: "Outgoing",
+    value: n(props.stats.profileRelationship, "outgoing_request"),
+    tone: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    label: "Incoming",
+    value: n(props.stats.profileRelationship, "incoming_request"),
+    tone: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    label: "Friend",
+    value: n(props.stats.profileRelationship, "friend"),
+    tone: "text-emerald-600 dark:text-emerald-400",
+  },
+]);
+
 const topActionMax = computed(() =>
   Math.max(1, ...props.analytics.actionBreakdown.map((row) => row.total), 1)
 );
@@ -429,6 +486,55 @@ const topActionMax = computed(() =>
         <div class="text-xs text-muted-foreground">{{ k.sub }}</div>
       </div>
     </div>
+
+    <section class="grid grid-cols-1 gap-3 xl:grid-cols-[1.5fr_1fr]">
+      <div class="rounded-lg border border-border bg-card p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-medium">Funnel Lifecycle Profile</h3>
+            <p class="text-xs text-muted-foreground">
+              Snapshot global untuk membaca readiness funnel profile dari pool mentah sampai
+              tahap invite.
+            </p>
+          </div>
+          <Link
+            href="/profiles"
+            class="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted"
+          >
+            Buka Profile Pool
+          </Link>
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div
+            v-for="card in profileLifecycleCards"
+            :key="card.label"
+            class="rounded-md border border-border bg-background px-3 py-2"
+          >
+            <div class="text-[11px] text-muted-foreground">{{ card.label }}</div>
+            <div :class="cn('mt-1 text-lg font-semibold', card.tone)">{{ card.value }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-border bg-card p-4">
+        <div>
+          <h3 class="text-sm font-medium">Relationship Snapshot</h3>
+          <p class="text-xs text-muted-foreground">
+            Ringkasan status hubungan aktual yang tersimpan di seluruh profile pool.
+          </p>
+        </div>
+        <div class="mt-3 grid grid-cols-3 gap-3">
+          <div
+            v-for="card in profileRelationshipCards"
+            :key="card.label"
+            class="rounded-md border border-border bg-background px-3 py-2"
+          >
+            <div class="text-[11px] text-muted-foreground">{{ card.label }}</div>
+            <div :class="cn('mt-1 text-lg font-semibold', card.tone)">{{ card.value }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.45fr_1fr]">
       <section class="rounded-lg border border-border bg-card p-5">

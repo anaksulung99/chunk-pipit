@@ -153,19 +153,8 @@ function fmtDateTime(value: string | null) {
   })
 }
 
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    perPage: table.perPage.value,
-    search: table.search.value,
-    filters: table.filters,
-    order: table.filters.order,
-    sort: table.filters.sort,
-  }
-}
-
 function refresh() {
-  router.get('/profiles', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 
 function destroy(id: string) {
@@ -197,7 +186,7 @@ function bulk(
       preserveState: false,
       onSuccess: () => {
         selection.clear()
-        refresh()
+        router.reload()
         if (action !== 'delete') bulkTagsText.value = ''
       },
     }
@@ -242,7 +231,7 @@ function bulkImport() {
     onSuccess: () => {
       importFile.value = null
       importTagsText.value = ''
-      refresh()
+      router.reload()
     },
   })
 }
@@ -416,7 +405,9 @@ const relationshipCard = [
             class="rounded-md border border-border bg-card px-3 py-2"
           >
             <div class="text-[11px] text-muted-foreground">{{ card.label }}</div>
-            <div :class="cn('mt-1 text-xl font-semibold', card.tone)">{{ card.value }}</div>
+            <div :class="cn('mt-1 text-xl font-semibold', card.tone)">
+              {{ card.value }}
+            </div>
           </div>
         </div>
       </div>
@@ -435,7 +426,9 @@ const relationshipCard = [
             class="rounded-md border border-border bg-card px-3 py-2"
           >
             <div class="text-[11px] text-muted-foreground">{{ card.label }}</div>
-            <div :class="cn('mt-1 text-xl font-semibold', card.tone)">{{ card.value }}</div>
+            <div :class="cn('mt-1 text-xl font-semibold', card.tone)">
+              {{ card.value }}
+            </div>
           </div>
         </div>
       </div>

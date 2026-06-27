@@ -1,6 +1,6 @@
 import Proxy from '#models/proxy'
 import { createProxyValidator, importProxiesValidator, bulkProxyValidator } from '#validators/proxy'
-import { tcpHealthCheck, type ProxyProtocol } from '#services/proxy/health_check'
+import { crawleeHealthCheck, type ProxyProtocol } from '#services/proxy/health_check'
 import { parseProxyLine } from '#services/proxy/parse'
 import type { HttpContext } from '@adonisjs/core/http'
 import { DateTime } from 'luxon'
@@ -190,10 +190,17 @@ export default class ProxiesController {
       .where('user_id', auth.user!.id)
       .firstOrFail()
 
-    const result = await tcpHealthCheck(proxy.protocol as ProxyProtocol, proxy.host, proxy.port, {
-      username: proxy.username,
-      password: proxy.password,
-    })
+    const result = await crawleeHealthCheck(
+      proxy.protocol as ProxyProtocol,
+      proxy.host,
+      proxy.port,
+      {
+        username: proxy.username,
+        password: proxy.password,
+        timeoutMs: 5000,
+        testUrl: 'https://api.ipify.org?format=json',
+      }
+    )
     proxy.merge({
       status: result.status,
       responseMs: result.responseMs,
@@ -246,13 +253,15 @@ export default class ProxiesController {
       const proxies = await Proxy.query().where('user_id', userId).whereIn('id', ids)
       await Promise.all(
         proxies.map(async (proxy) => {
-          const result = await tcpHealthCheck(
+          const result = await crawleeHealthCheck(
             proxy.protocol as ProxyProtocol,
             proxy.host,
             proxy.port,
             {
               username: proxy.username,
               password: proxy.password,
+              timeoutMs: 5000,
+              testUrl: 'https://api.ipify.org?format=json',
             }
           )
           proxy.merge({

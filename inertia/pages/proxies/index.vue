@@ -9,6 +9,15 @@ import Pagination from '~/components/ui/Pagination.vue'
 import BulkActionBar from '~/components/ui/BulkActionBar.vue'
 import { useDataTable, type TableMeta } from '~/composables/useDataTable'
 import { useTableSelection } from '~/composables/useTableSelection'
+import {
+  TransitionRoot,
+  TransitionChild,
+  Dialog as DialogRoot,
+  DialogPanel,
+  DialogTitle,
+  DialogDescription,
+} from '@headlessui/vue'
+import { toast } from 'vue3-toastify'
 
 type ProxyRow = {
   id: string
@@ -50,6 +59,12 @@ const props = defineProps<{
   }
 }>()
 
+const {
+    showProgressModal,
+    addProgress,
+    check,
+} = useProxyHealthCheck()
+
 const rows = computed(() => props.proxies.data)
 const meta = computed(() => props.proxies.meta)
 const rangeDate = ref<DateRange>(
@@ -57,6 +72,11 @@ const rangeDate = ref<DateRange>(
     ? [parseDate(props.filters.startDate), parseDate(props.filters.endDate)]
     : null
 )
+
+const completedProgressRef = ref(null)
+const validateProgressValue = computed(
+  () => (addProgress.current / addProgress.total) * 100 || 0
+);
 
 const table = useDataTable({
   only: ['proxies'],
@@ -149,7 +169,7 @@ function destroy(id: string) {
   router.delete(`/proxies/${id}`, {
     preserveScroll: true,
     preserveState: false,
-    onSuccess: () => refresh(),
+    onSuccess: () => router.reload(),
   })
 }
 
@@ -172,16 +192,16 @@ function bulk(action: 'delete' | 'health_check') {
       preserveState: false,
       onSuccess: () => {
         selection.clear()
-        refresh()
+        router.reload()
       },
     }
   )
 }
 
-function buildQuery() {
+function buildQuery(page: number = meta.value.currentPage) {
   return {
-    page: meta.value.currentPage,
-    perPage: table.perPage.value,
+    page,
+    per_page: table.perPage.value,
     search: table.search.value,
     status: table.filters.status,
     protocol: table.filters.protocol,
@@ -194,8 +214,23 @@ function buildQuery() {
 
 // Refresh proxies
 function refresh() {
-  router.get('/proxies', buildQuery(), { preserveScroll: true, preserveState: false })
+  buildQuery()
+  router.reload()
 }
+
+async function bulkCheck(){
+  try {
+    const result = await check(Array.from(selection.selected.value))
+    toast.success(`Check selesai, ${result.total} proxy terpilih, ${result.healthy} healthy, ${result.slow} slow, ${result.dead} dead, ${result.failed} failed`)
+  } catch(error){
+    toast.error(error instanceof Error ? error.message : 'Error')
+  } finally {
+    showProgressModal.value = false
+    selection.clear()
+    refresh()
+  }
+}
+
 
 const statsCard = [
   {
@@ -439,8 +474,8 @@ const statsCard = [
     >
       <button
         type="button"
-        class="rounded-md border border-border px-2.5 py-1 text-sm hover:bg-muted"
-        @click="bulk('health_check')"
+        class="rounded-md border border-emerald-500/40 px-2.5 py-1 text-sm text-emerald-500 hover:bg-emerald-500/10"
+        @click="bulkCheck"
       >
         Health check
       </button>
@@ -526,5 +561,104 @@ const statsCard = [
       @go="table.goToPage"
       @per-page="table.setPerPage"
     />
+
+    <TransitionRoot appear :show="showProgressModal" as="template">
+      <DialogRoot
+        as="div"
+        :initial-focus="completedProgressRef"
+        class="relative z-50"
+        @close="showProgressModal = false"
+      >
+        <TransitionChild
+          as="template"
+          enter="duration-300 ease-out"
+          enter-from="opacity-0"
+          enter-to="opacity-100"
+          leave="duration-200 ease-in"
+          leave-from="opacity-100"
+          leave-to="opacity-0"
+        >
+          <div class="fixed inset-0 bg-black/25" />
+        </TransitionChild>
+
+        <div class="fixed inset-0 overflow-y-auto">
+          <div class="flex min-h-full items-center justify-center p-4 text-center">
+            <TransitionChild
+              as="template"
+              enter="duration-300 ease-out"
+              enter-from="opacity-0 scale-95"
+              enter-to="opacity-100 scale-100"
+              leave="duration-200 ease-in"
+              leave-from="opacity-100 scale-100"
+              leave-to="opacity-0 scale-95"
+            >
+              <DialogPanel
+                class="w-full max-w-md transform overflow-hidden rounded-2xl bg-card p-6 text-left align-middle shadow-xl transition-all"
+              >
+                <DialogTitle
+                  as="h3"
+                  class="text-lg font-medium leading-6 text-foreground"
+                >
+                  Check Progress
+                </DialogTitle>
+                <DialogDescription class="mt-2 text-sm text-muted-foreground">
+                  Sedang mengecek proxy {{ selection.count.value }} terpilih.
+                </DialogDescription>
+
+                <div class="mt-6 space-y-4">
+                  <div class="flex items-center gap-3">
+                    <Spinner class="animate-spin" />
+                    <h3 class="font-semibold">Validating Proxies Health</h3>
+                  </div>
+                  <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                      <span>Progress</span>
+                      <span> {{ addProgress.current }}/{{ addProgress.total }} </span>
+                    </div>
+                    <div class="h-2 w-full rounded-full bg-background">
+                      <div
+                        class="h-2 rounded-full bg-emerald-600"
+                        :style="{ width: validateProgressValue + '%' }"
+                      ></div>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-4 gap-3 text-center">
+                    <div class="rounded-lg bg-green-600/10 p-2">
+                      <div class="font-bold text-green-600">
+                        {{ addProgress.healthy }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Healthy</div>
+                    </div>
+                    <div class="rounded-lg bg-amber-600/10 p-2">
+                      <div class="font-bold text-amber-600">
+                        {{ addProgress.slow }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Slow</div>
+                    </div>
+                    <div class="rounded-lg bg-muted p-2">
+                      <div class="font-bold text-muted-foreground">
+                        {{ addProgress.dead }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Dead</div>
+                    </div>
+                    <div class="rounded-lg bg-red-600/10 p-2">
+                      <div class="font-bold text-red-600">
+                        {{ addProgress.failed }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">Failed</div>
+                    </div>
+                  </div>
+                  <div class="text-sm text-muted-foreground">
+                    Validating: {{ addProgress.currentProxyId || "Starting..." }}
+                  </div>
+                </div>
+
+                <button ref="completedProgressRef" class="sr-only">Close</button>
+              </DialogPanel>
+            </TransitionChild>
+          </div>
+        </div>
+      </DialogRoot>
+    </TransitionRoot>
   </App>
 </template>

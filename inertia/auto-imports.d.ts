@@ -291,6 +291,7 @@ declare global {
   const usePreferredReducedTransparency: typeof import('@vueuse/core').usePreferredReducedTransparency
   const usePrevious: typeof import('@vueuse/core').usePrevious
   const useProjection: typeof import('@vueuse/math').useProjection
+  const useProxyHealthCheck: typeof import('./composables/useProxyHealthCheck').useProxyHealthCheck
   const useRafFn: typeof import('@vueuse/core').useRafFn
   const useRefHistory: typeof import('@vueuse/core').useRefHistory
   const useResizeObserver: typeof import('@vueuse/core').useResizeObserver
@@ -687,6 +688,7 @@ declare module 'vue' {
     readonly usePreferredReducedTransparency: UnwrapRef<typeof import('@vueuse/core')['usePreferredReducedTransparency']>
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
     readonly useProjection: UnwrapRef<typeof import('@vueuse/math')['useProjection']>
+    readonly useProxyHealthCheck: UnwrapRef<typeof import('./composables/useProxyHealthCheck')['useProxyHealthCheck']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>

@@ -2,7 +2,7 @@ import { HttpClientService } from '#services/http/client_service'
 import { HttpProxyAgent } from 'http-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { SocksProxyAgent } from 'socks-proxy-agent'
-import { CheerioCrawler, ProxyConfiguration } from 'crawlee'
+import { PlaywrightCrawler, ProxyConfiguration } from 'crawlee'
 import logger from '@adonisjs/core/services/logger'
 
 export type ProxyHealth = {
@@ -132,7 +132,7 @@ export async function crawleeHealthCheck(
   const start = Date.now()
   let passed = false
 
-  const crawler = new CheerioCrawler({
+  const crawler = new PlaywrightCrawler({
     proxyConfiguration: new ProxyConfiguration({
       proxyUrls: [proxyUrl],
     }),
@@ -146,7 +146,7 @@ export async function crawleeHealthCheck(
       maxConcurrency: 1,
     },
     requestHandler({ response }) {
-      const statusCode = response.statusCode
+      const statusCode = response?.status() ?? 0
       if (!statusCode || statusCode < 200 || statusCode >= 400) {
         throw new Error(`Crawlee proxy health check failed with status ${statusCode}`)
       }

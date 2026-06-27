@@ -188,22 +188,9 @@ function bulk(action: 'delete' | 'set_status', status?: string) {
   )
 }
 
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    perPage: table.perPage.value,
-    search: table.search.value,
-    filters: table.filters,
-    order: table.filters.order,
-    sort: table.filters.sort,
-    startDate: table.filters.startDate,
-    endDate: table.filters.endDate,
-  }
-}
-
 // Refresh accounts
 function refresh() {
-  router.get('/accounts', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 
 function healthCheck(id: string) {

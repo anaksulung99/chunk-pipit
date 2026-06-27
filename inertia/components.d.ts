@@ -58,6 +58,7 @@ declare module 'vue' {
     ThemeToggle: typeof import('./components/ui/ThemeToggle.vue')['default']
     Toolbar: typeof import('./components/ui/Toolbar.vue')['default']
     UpdateAccountFacebook: typeof import('./components/facebook/UpdateAccountFacebook.vue')['default']
+    UpdateAntidetectForm: typeof import('./components/antidetect/UpdateAntidetectForm.vue')['default']
     UpdateFingerprint: typeof import('./components/fingerprint/UpdateFingerprint.vue')['default']
     UpdateTeam: typeof import('./components/team/UpdateTeam.vue')['default']
   }

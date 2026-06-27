@@ -198,7 +198,7 @@ function refresh() {
   router.get('/fingerprints', buildQuery(), { preserveScroll: true, preserveState: false })
 }
 
-const statsCard = [
+const osStatsCard = [
   {
     label: 'Total Fingerprints',
     value: props.fingerprints.stats.total,
@@ -223,6 +223,8 @@ const statsCard = [
     icon: 'logos:macosx',
     color: 'text-muted-foreground',
   },
+]
+const browserStatsCard = [
   {
     label: 'Chrome',
     value: props.fingerprints.stats.chrome,
@@ -280,21 +282,40 @@ const statsCard = [
         </button>
       </div>
     </template>
-
-    <div class="grid grid-cols-1 gap-3 md:grid-cols-3 shadow-md">
-      <div
-        v-for="k in statsCard"
-        :key="k.label"
-        class="rounded-lg border border-border bg-background p-4"
-      >
-        <span class="text-xs text-muted-foreground">{{ k.label }}</span>
-        <div class="flex items-center justify-between">
-          <Icon :icon="k.icon" :class="cn('size-6', k.color)" />
-          <div class="mt-1 text-2xl font-semibold">{{ k.value }}</div>
+    <div class="space-y-4">
+      <div class="space-y-2 rounded-md border border-border p-2">
+        <div>Device Fingerprint Yang Dibuat</div>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-4 shadow-md">
+          <div
+            v-for="k in osStatsCard"
+            :key="k.label"
+            class="rounded-lg border border-border bg-background p-4"
+          >
+            <span class="text-xs text-muted-foreground">{{ k.label }}</span>
+            <div class="flex items-center justify-between">
+              <Icon :icon="k.icon" :class="cn('size-6', k.color)" />
+              <div class="mt-1 text-2xl font-semibold">{{ k.value }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-2 rounded-md border border-border p-2">
+        <div>Browser Fingerprint Yang Dibuat</div>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-4 shadow-md">
+          <div
+            v-for="k in browserStatsCard"
+            :key="k.label"
+            class="rounded-lg border border-border bg-background p-4"
+          >
+            <span class="text-xs text-muted-foreground">{{ k.label }}</span>
+            <div class="flex items-center justify-between">
+              <Icon :icon="k.icon" :class="cn('size-6', k.color)" />
+              <div class="mt-1 text-2xl font-semibold">{{ k.value }}</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-
     <!-- Generate panel -->
     <form v-if="showCreate" class="space-y-4" @submit.prevent="submitCreate">
       <div

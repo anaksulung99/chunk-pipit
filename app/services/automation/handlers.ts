@@ -443,6 +443,45 @@ function isGroupExpertDialog(text: string) {
   return markers.some((item) => normalized.includes(item))
 }
 
+function isInviteAlreadyStateText(text: string) {
+  const normalized = normalizeText(text).toLowerCase()
+  if (!normalized) return false
+
+  const markers = [
+    'invited',
+    'invite sent',
+    'already invited',
+    'already a member',
+    'already likes this page',
+    'already following',
+    'sudah diundang',
+    'undangan terkirim',
+    'sudah menjadi anggota',
+    'sudah menyukai halaman ini',
+    'sudah mengikuti',
+  ]
+
+  return markers.some((item) => normalized.includes(item))
+}
+
+function isInviteSuccessText(text: string) {
+  const normalized = normalizeText(text).toLowerCase()
+  if (!normalized) return false
+
+  const markers = [
+    'invite sent',
+    'invites sent',
+    'invitation sent',
+    'sent',
+    'successfully invited',
+    'undangan terkirim',
+    'berhasil diundang',
+    'berhasil mengundang',
+  ]
+
+  return markers.some((item) => normalized.includes(item))
+}
+
 function isLoginWallText(text: string) {
   const normalized = normalizeText(text).toLowerCase()
   if (!normalized) return false
@@ -2214,6 +2253,13 @@ export async function runAutoInvite(
   config: Pick<CampaignConfig, 'inviteType' | 'url'>
 ): Promise<ActionResult> {
   const inviteType = config.inviteType ?? 'group'
+  if (!['group', 'page_follower'].includes(inviteType)) {
+    return {
+      status: 'skipped',
+      message: `Mode auto invite "${inviteType}" belum aktif di foundation saat ini.`,
+    }
+  }
+
   const inviteTargetUrl = normalizeFacebookUrl(config.url)
   if (!inviteTargetUrl) {
     return { status: 'failed', message: 'URL target invite belum diisi.' }
@@ -2221,32 +2267,16 @@ export async function runAutoInvite(
 
   await page.goto(inviteTargetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
   await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
 
   let pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
   let pageIdentitySwitched = false
   const mainContent = page.locator('[role="main"]').first()
-
-  if (
-    /continue as /i.test(pageBodyText) ||
-    /lanjutkan sebagai /i.test(pageBodyText) ||
-    /use another profile/i.test(pageBodyText) ||
-    /gunakan profil lain/i.test(pageBodyText)
-  ) {
-    const continueAsButton = await firstVisibleCandidate([
-      page.getByText(/continue as /i),
-      page.getByText(/lanjutkan sebagai /i),
-      mainContent.getByText(/continue as /i),
-      mainContent.getByText(/lanjutkan sebagai /i),
-      page.locator('div[role="button"]:has-text("Continue as")'),
-      page.locator('div[role="button"]:has-text("Lanjutkan sebagai")'),
-      page.locator('button:has-text("Continue as")'),
-      page.locator('button:has-text("Lanjutkan sebagai")'),
-    ])
-
-    if (continueAsButton) {
-      await clickBestEffort(continueAsButton)
-      await humanDelay(4000)
-      pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  if (isLoginWallText(pageBodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall pada URL target invite.',
     }
   }
 
@@ -2333,6 +2363,16 @@ export async function runAutoInvite(
     if (normalizeFacebookUrl(page.url()) !== membersUrl) {
       await page.goto(membersUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
       await humanDelay(2500)
+      await resolveFacebookContinueAs(page)
+      await humanDelay(1200)
+      pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+    }
+
+    if (isLoginWallText(pageBodyText)) {
+      return {
+        status: 'skipped',
+        message: 'Facebook menampilkan login/public wall pada halaman members group target.',
+      }
     }
 
     const addMembersButton = await firstVisibleLocator(mainContent, groupAddMemberSelectors)
@@ -2481,6 +2521,13 @@ export async function runAutoInvite(
     }
   }
 
+  if (isInviteAlreadyStateText(dialogText)) {
+    return {
+      status: 'skipped',
+      message: `Dialog invite menunjukkan target "${profile.profileName ?? profile.profileId}" sudah pernah diundang atau sudah berada di tujuan.`,
+    }
+  }
+
   const searchTerms = inviteSearchTerms(profile)
   const targetName = searchTerms[0]
   if (!targetName) {
@@ -2525,6 +2572,14 @@ export async function runAutoInvite(
     return {
       status: 'skipped',
       message: `Target "${targetName}" tidak muncul di dialog invite.`,
+    }
+  }
+
+  const candidateText = normalizeText(await candidateRow.innerText().catch(() => ''))
+  if (isInviteAlreadyStateText(candidateText)) {
+    return {
+      status: 'skipped',
+      message: `Target "${targetName}" sudah memiliki state invited/member/follower pada dialog invite.`,
     }
   }
 
@@ -2594,9 +2649,32 @@ export async function runAutoInvite(
   await sendButton.click()
   await humanDelay(2000)
 
+  const dialogStillVisible = await dialog.isVisible().catch(() => false)
+  const refreshedDialogText = normalizeText(await dialog.innerText().catch(() => ''))
+  const bodyAfterSend = normalizeText(await page.locator('body').innerText().catch(() => ''))
+
+  if (isLoginWallText(refreshedDialogText || bodyAfterSend)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall setelah klik kirim invite.',
+    }
+  }
+
+  if (
+    !dialogStillVisible ||
+    isInviteSuccessText(refreshedDialogText) ||
+    isInviteSuccessText(bodyAfterSend) ||
+    (isInviteAlreadyStateText(refreshedDialogText) && refreshedDialogText !== candidateText)
+  ) {
+    return {
+      status: 'done',
+      message: `Invite untuk "${targetName}" dikirim.`,
+    }
+  }
+
   return {
-    status: 'done',
-    message: `Invite untuk "${targetName}" dikirim.`,
+    status: 'failed',
+    message: `Invite untuk "${targetName}" belum terverifikasi terkirim.`,
   }
 }
 

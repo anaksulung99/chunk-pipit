@@ -148,21 +148,8 @@ function fmtDate(value: string | null) {
   })
 }
 
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    perPage: table.perPage.value,
-    search: table.search.value,
-    type: table.filters.type,
-    order: table.filters.order,
-    sort: table.filters.sort,
-    startDate: table.filters.startDate,
-    endDate: table.filters.endDate,
-    status: table.filters.status,
-  }
-}
 function refresh() {
-  router.get('/campaigns', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 function destroy(id: string) {
   if (!confirm('Hapus campaign ini?')) return

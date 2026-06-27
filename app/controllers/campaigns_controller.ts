@@ -627,6 +627,13 @@ export default class CampaignsController {
       session.flash('error', 'Auto Invite membutuhkan tipe invite.')
       return response.redirect().back()
     }
+    if (payload.type === 'auto_invite' && payload.config?.inviteType === 'event') {
+      session.flash(
+        'error',
+        'Auto Invite saat ini baru mendukung target group dan page follower. Mode event masih diparkir.'
+      )
+      return response.redirect().back()
+    }
     if (payload.type === 'auto_invite' && !payload.config?.url) {
       session.flash('error', 'Auto Invite membutuhkan URL target invite.')
       return response.redirect().back()
@@ -1250,6 +1257,13 @@ export default class CampaignsController {
     }
     if (payload.type === 'auto_invite' && !payload.config?.inviteType) {
       session.flash('error', 'Auto Invite membutuhkan tipe invite.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_invite' && payload.config?.inviteType === 'event') {
+      session.flash(
+        'error',
+        'Auto Invite saat ini baru mendukung target group dan page follower. Mode event masih diparkir.'
+      )
       return response.redirect().back()
     }
     if (payload.type === 'auto_invite' && !payload.config?.url) {

@@ -120,22 +120,9 @@ function submitImport() {
     },
   })
 }
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    perPage: table.perPage.value,
-    search: table.search.value,
-    filters: table.filters,
-    order: table.filters.order,
-    sort: table.filters.sort,
-    startDate: table.filters.startDate,
-    endDate: table.filters.endDate,
-  }
-}
 
-// Refresh groups
 function refresh() {
-  router.get('/groups', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 
 function setType(id: string, groupType: string) {

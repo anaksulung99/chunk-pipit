@@ -52,6 +52,7 @@ const PersonalSettingsController = () => import('#controllers/personal_settings_
 const ProfilesController = () => import('#controllers/profiles_controller')
 const ApiFacebookAccountController = () => import('#controllers/api/facebook_account_controller')
 const AntiDetectController = () => import('#controllers/antidetects_controller')
+const ApiProxiesController = () => import('#controllers/api/proxies_controller')
 
 router
   .group(() => {
@@ -149,6 +150,9 @@ router
     router
       .post('api/facebook-accounts/health-check', [ApiFacebookAccountController, 'healthCheck'])
       .as('api.facebook-accounts.health')
+    router
+      .post('api/proxies/health-check', [ApiProxiesController, 'healthCheck'])
+      .as('api.proxies.health')
 
     router.get('antidetects', [AntiDetectController, 'index']).as('antidetects.index')
     router.post('antidetects/:id/start', [AntiDetectController, 'start']).as('antidetects.start')

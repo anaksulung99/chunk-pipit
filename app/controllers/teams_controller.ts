@@ -490,6 +490,7 @@ export default class TeamsController {
         sourceUrl: p.sourceUrl,
         sourceType: p.sourceType,
         tags: p.tags?.join(',') ?? null,
+        lifecycleStatus: p.lifecycleStatus,
         relationshipStatus: p.relationshipStatus,
         lastAction: p.lastAction,
         lastActionAt: p.lastActionAt ? p.lastActionAt.toISO() : null,

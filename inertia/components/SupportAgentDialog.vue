@@ -20,24 +20,24 @@ const supportAgents = ref([
     name: "Telegram",
     icon: "logos:telegram",
     url: "https://t.me/grpc93",
-    cta: "Join",
-    desc: "Join our Telegram group to get support.",
+    cta: "Direct Message",
+    desc: "Direct message our Telegram account to get support.",
   },
   {
     value: "whatsapp",
     name: "WhatsApp",
     icon: "logos:whatsapp-icon",
-    url: "https://wa.me/+6285314830040",
-    cta: "Join",
-    desc: "Join our WhatsApp group to get support.",
+    url: "https://wa.me/+6285314830040?text=Hello, Pinjam duit seratus 🙏",
+    cta: "Direct Message",
+    desc: "Direct message our WhatsApp account to get support.",
   },
   {
     value: "email",
     name: "Email",
     icon: "logos:google-gmail",
     url:
-      "mailto:premiumwatchdevice@gmail.com?subject=Subject=Question&body=Hello, I have a question.",
-    cta: "Join",
+      "mailto:premiumwatchdevice@gmail.com?subject=Subject=Question&body=Hello, Pinjam duit seratus 🙏",
+    cta: "Send Email",
     desc: "Send us an email to get support.",
   },
   {
@@ -68,7 +68,6 @@ function openSupportAgent(url: string) {
           v-for="agent in supportAgents"
           :key="agent.value"
           class="flex items-center justify-between gap-4 p-4 cursor-pointer border border-amber-600/40 rounded-md"
-          @click="openSupportAgent(agent.url)"
         >
           <div class="flex items-center gap-3">
             <Icon :icon="agent.icon" class="size-10" />

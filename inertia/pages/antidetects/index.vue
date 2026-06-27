@@ -93,9 +93,9 @@ const showCreateForm = ref(false)
 
 const rows = computed(() => props.antidetects.data)
 const meta = computed(() => props.antidetects.meta)
-const dataToAction = ref({
+const dataToAction = ref<{ show: boolean; data: AntidetectRow | null }>({
   show: false,
-  data: null as AntidetectRow | null,
+  data: null,
 })
 
 const rangeDate = ref<DateRange>(
@@ -162,27 +162,8 @@ const BROWSER_NAME = [
   'safari_mobile',
   'firefox_mobile',
 ]
-
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    per_page: table.perPage.value,
-    search: table.search.value,
-    engine: table.filters.engine,
-    deviceType: table.filters.deviceType,
-    osName: table.filters.osName,
-    browserName: table.filters.browserName,
-    language: table.filters.language,
-    timezone: table.filters.timezone,
-    startDate: table.filters.startDate,
-    endDate: table.filters.endDate,
-    order: table.order.value,
-    sort: table.sort.value,
-  }
-}
-
 function refresh() {
-  router.get('/antidetects', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 
 function fmtDate(value: string | null) {
@@ -383,7 +364,7 @@ async function start(data: AntidetectRow) {
     <div class="space-y-4">
       <div class="space-y-2 rounded-md border border-border p-2">
         <div>Device Antidetect Yang Dibuat</div>
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-3 shadow-md">
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-4 shadow-md">
           <div
             v-for="k in deviceStatsCard"
             :key="k.label"
@@ -399,7 +380,7 @@ async function start(data: AntidetectRow) {
       </div>
       <div class="space-y-2 rounded-md border border-border p-2">
         <div>Browser Antidetect Yang Dibuat</div>
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-3 shadow-md">
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-4 shadow-md">
           <div
             v-for="k in browserStatsCard"
             :key="k.label"
@@ -593,6 +574,13 @@ async function start(data: AntidetectRow) {
       v-model:open="showCreateForm"
       :proxies="props.proxies"
       @close="showCreateForm = false"
+    />
+
+    <UpdateAntidetectForm
+      v-model:open="dataToAction.show"
+      :antidetect="dataToAction.data"
+      :proxies="props.proxies"
+      @close="dataToAction.show = false"
     />
   </App>
 </template>

@@ -42,3 +42,4 @@ resources/browsers/*
 resources/rabbitmq/*
 resources/redis/*
 resources/sidecar/*
+storage/*

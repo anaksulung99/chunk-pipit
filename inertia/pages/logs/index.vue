@@ -102,22 +102,8 @@ const statusBadge = (s: string) =>
 function fmt(value: string | null) {
   return value ? new Date(value).toLocaleString('id-ID') : '—'
 }
-
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    per_page: table.perPage.value,
-    search: table.search.value,
-    status: table.filters.status,
-    campaignId: table.filters.campaignId,
-    startDate: table.filters.startDate,
-    endDate: table.filters.endDate,
-    order: table.order.value,
-    sort: table.sort.value,
-  }
-}
 function refresh() {
-  router.get('/logs', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 function bulkDelete() {
   if (!confirm('Hapus fingerprint terpilih?')) return
@@ -139,7 +125,7 @@ function bulkDelete() {
       preserveState: false,
       onSuccess: () => {
         selection.clear()
-        refresh()
+        router.reload()
       },
     }
   )

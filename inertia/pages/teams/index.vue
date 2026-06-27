@@ -116,21 +116,9 @@ function fmtDate(value: string | null) {
   })
 }
 
-function buildQuery() {
-  return {
-    page: meta.value.currentPage,
-    per_page: table.perPage.value,
-    search: table.search.value,
-    order: table.order.value,
-    sort: table.sort.value,
-    role: table.filters.role,
-    status: table.filters.status,
-    startDate: table.filters.startDate,
-    endDate: table.filters.endDate,
-  }
-}
+
 function refresh() {
-  router.get('/teams', buildQuery(), { preserveScroll: true, preserveState: false })
+  router.reload()
 }
 function destroy(id: string) {
   if (!confirm('Hapus team ini?')) return
