@@ -4,6 +4,10 @@
   appId: 'chunk-pipit',
   asar: true,
   productName: 'Chunk Pipit',
+  // Electron entry point (package.json has no "main" field).
+  extraMetadata: {
+    main: 'dist-electron/main.js',
+  },
   icon: 'public/logo.png',
   directories: {
     output: 'release/${version}',
@@ -11,6 +15,14 @@
   files: ['dist', 'dist-electron', '!resources/**/*'],
   // Sidecar bundles and app env — included for all platforms
   extraResources: [
+    {
+      // The compiled AdonisJS app (`node ace build` → build/, with prod
+      // node_modules). Run by the sidecar supervisor as app/bin/server.js
+      // and app/ace.js (queue:work).
+      from: 'build',
+      to: 'app',
+      filter: ['**/*'],
+    },
     {
       from: 'resources/sidecar',
       to: 'sidecar',

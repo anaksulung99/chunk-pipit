@@ -96,19 +96,23 @@ function spawnNode(entry: string, args: string[], env: NodeJS.ProcessEnv): Child
 }
 
 function apiEntry(): string {
+  // Packaged: resources/app/bin/server.js (the bundled `node ace build` output).
+  // Dev fallback: ./build/bin/server.js. Override with SIDECAR_API_ENTRY.
   return (
     process.env.SIDECAR_API_ENTRY ||
+    findResource(path.join('app', 'bin', 'server.js')) ||
     findResource(path.join('sidecar', 'server.js')) ||
     path.join(process.env.APP_ROOT || process.cwd(), 'build', 'bin', 'server.js')
   )
 }
 
 function workerEntry(): string | undefined {
+  // Ace commands run via ace.js: `node app/ace.js queue:work`.
   return (
     process.env.SIDECAR_WORKER_ENTRY ||
-    findResource(path.join('sidecar', 'worker.js')) ||
+    findResource(path.join('app', 'ace.js')) ||
     (() => {
-      const ace = path.join(process.env.APP_ROOT || process.cwd(), 'build', 'bin', 'console.js')
+      const ace = path.join(process.env.APP_ROOT || process.cwd(), 'build', 'ace.js')
       return fs.existsSync(ace) ? ace : undefined
     })()
   )
@@ -181,6 +185,10 @@ export async function startServices(): Promise<Services> {
   const redis = startRedis(redisPort)
   await waitRedis(redisPort)
 
+  // Point the worker's Playwright at the bundled browsers (the worker is a
+  // child process spawned before the renderer ever sets this).
+  const browsersPath = findResource('browsers')
+
   const sharedEnv: NodeJS.ProcessEnv = {
     ...process.env,
     PORT: String(apiPort),
@@ -188,6 +196,9 @@ export async function startServices(): Promise<Services> {
     NODE_ENV: 'production',
     REDIS_HOST: '127.0.0.1',
     REDIS_PORT: String(redisPort),
+    REDIS_PASSWORD: '', // portable Redis runs without auth
+    LIMITER_STORE: 'redis',
+    ...(browsersPath ? { PLAYWRIGHT_BROWSERS_PATH: browsersPath } : {}),
   }
 
   const api = spawnNode(apiEntry(), [], sharedEnv)
@@ -195,7 +206,7 @@ export async function startServices(): Promise<Services> {
 
   const entry = workerEntry()
   const worker = entry
-    ? spawnNode(entry, entry.endsWith('console.js') ? ['queue:work'] : [], sharedEnv)
+    ? spawnNode(entry, entry.endsWith('ace.js') ? ['queue:work'] : [], sharedEnv)
     : undefined
 
   const stop = async () => {

@@ -1,6 +1,7 @@
 {
-  "name": "fb-automation",
-  "version": "0.0.0",
+  "name": "chunk-pipit",
+  "description": "Facebook tools automations",
+  "version": "0.0.1-beta",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",
@@ -10,6 +11,8 @@
   "scripts": {
     "start": "node bin/server.js",
     "build": "node ace build",
+    "dist": "node scripts/build-production.mjs",
+    "dist:build-only": "node scripts/build-production.mjs --no-pack",
     "dev": "node ace serve --hmr",
     "dev:electron": "node scripts/dev-electron.mjs",
     "groups:backfill": "node ace groups:backfill-metadata",
@@ -50,6 +53,7 @@
     "@adonisjs/limiter": "^3.0.1",
     "@adonisjs/lucid": "^22.4.2",
     "@adonisjs/mail": "^10.3.0",
+    "@adonisjs/redis": "^10.0.0",
     "@adonisjs/session": "^8.1.0",
     "@adonisjs/shield": "^9.0.0",
     "@adonisjs/static": "^2.0.1",

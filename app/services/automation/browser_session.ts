@@ -53,25 +53,32 @@ export function resolveChromiumPath(): string | undefined {
     // not installed — fall through to a bundled binary
   }
 
-  const root = process.env.APP_ROOT || process.cwd()
-  const browsersDir = path.join(root, 'resources', 'browsers')
-  try {
-    const dirs = fs
-      .readdirSync(browsersDir)
-      .filter((d) => d.startsWith('chromium-'))
-      .sort()
-      .reverse()
-    for (const dir of dirs) {
-      for (const candidate of [
-        path.join(browsersDir, dir, 'chrome-win64', 'chrome.exe'),
-        path.join(browsersDir, dir, 'chrome-linux', 'chrome'),
-        path.join(browsersDir, dir, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
-      ]) {
-        if (fs.existsSync(candidate)) return candidate
+  // Candidate browser roots: explicit env, packaged resources, then dev path.
+  const browsersDirs = [
+    process.env.PLAYWRIGHT_BROWSERS_PATH,
+    process.resourcesPath ? path.join(process.resourcesPath, 'browsers') : undefined,
+    path.join(process.env.APP_ROOT || process.cwd(), 'resources', 'browsers'),
+  ].filter(Boolean) as string[]
+
+  for (const browsersDir of browsersDirs) {
+    try {
+      const dirs = fs
+        .readdirSync(browsersDir)
+        .filter((d) => d.startsWith('chromium-'))
+        .sort()
+        .reverse()
+      for (const dir of dirs) {
+        for (const candidate of [
+          path.join(browsersDir, dir, 'chrome-win64', 'chrome.exe'),
+          path.join(browsersDir, dir, 'chrome-linux', 'chrome'),
+          path.join(browsersDir, dir, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+        ]) {
+          if (fs.existsSync(candidate)) return candidate
+        }
       }
+    } catch {
+      // try next candidate dir
     }
-  } catch {
-    // resources/browsers not present — fall back to default
   }
   return undefined
 }

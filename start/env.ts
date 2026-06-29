@@ -46,6 +46,9 @@ export default await Env.create(new URL('../', import.meta.url), {
   REDIS_PORT: Env.schema.number(),
   REDIS_PASSWORD: Env.schema.string.optional(),
 
+  // Rate limiter backing store ('memory' for dev, 'redis' in production).
+  LIMITER_STORE: Env.schema.enum.optional(['memory', 'redis'] as const),
+
   // # RabbitMQ
   HEALTHCHECK_ENQUEUE_ENABLED: Env.schema.boolean.optional(),
   RABBITMQ_URL: Env.schema.string.optional(),

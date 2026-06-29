@@ -132,16 +132,16 @@ export class AntidetectService {
     const fallbackCandidates =
       engine === 'firefox'
         ? [
-            path.join(browsersDir, 'firefox-1522', 'firefox', 'firefox.exe'),
+            path.join(browsersDir, 'firefox-1532', 'firefox', 'firefox.exe'),
             path.join(browsersDir, 'firefox', 'firefox.exe'),
           ]
         : engine === 'webkit'
           ? [
-              path.join(browsersDir, 'webkit-2287', 'Playwright.exe'),
+              path.join(browsersDir, 'webkit-2311', 'Playwright.exe'),
               path.join(browsersDir, 'webkit', 'Playwright.exe'),
             ]
           : [
-              path.join(browsersDir, 'chromium-1223', 'chrome-win64', 'chrome.exe'),
+              path.join(browsersDir, 'chromium-1228', 'chrome-win64', 'chrome.exe'),
               path.join(browsersDir, 'chromium', 'chrome-win64', 'chrome.exe'),
             ]
     const candidates = [
