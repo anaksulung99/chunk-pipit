@@ -38,6 +38,8 @@ type CampaignConfig = {
   inboxType?: string
   deleteType?: string
   confirmType?: string
+  createType?: string
+  groupPrivacy?: string
 }
 
 function groupUrl(g: GroupTarget) {
@@ -139,7 +141,10 @@ function pickRandomItem<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)] ?? null
 }
 
-function profileFirstName(profileName: string | null | undefined, profileId: string | null | undefined) {
+function profileFirstName(
+  profileName: string | null | undefined,
+  profileId: string | null | undefined
+) {
   const resolved = normalizeText(profileName) || fallbackProfileName(profileId)
   if (!resolved) return ''
   return normalizeText(resolved.split(' ')[0])
@@ -149,7 +154,8 @@ function renderInboxTemplate(
   template: string,
   profile: ProfileTarget & { profileName?: string | null }
 ) {
-  const fullName = normalizeText(profile.profileName) || fallbackProfileName(profile.profileId) || 'sob'
+  const fullName =
+    normalizeText(profile.profileName) || fallbackProfileName(profile.profileId) || 'sob'
   const firstName = profileFirstName(profile.profileName, profile.profileId) || fullName
   const profileId = normalizeText(profile.profileId)
 
@@ -227,6 +233,28 @@ async function clickBestEffort(locator: Locator) {
       ;(node as HTMLElement).click()
     })
   })
+}
+
+async function waitForSettledDialog(
+  page: Page,
+  dialog: Locator | null,
+  waitsMs: number[] = [0, 1200, 2500, 4000]
+) {
+  let latestDialog = dialog
+
+  for (const waitMs of waitsMs) {
+    if (waitMs > 0) await humanDelay(waitMs)
+    latestDialog = (await lastVisibleDialog(page)) ?? latestDialog
+    if (!latestDialog) continue
+
+    const label = normalizeText(await latestDialog.getAttribute('aria-label').catch(() => ''))
+    const text = normalizeText(await latestDialog.innerText().catch(() => ''))
+    const looksLoading = /^loading/i.test(label) || (!text && /loading/i.test(label))
+
+    if (!looksLoading && (text || label)) return latestDialog
+  }
+
+  return latestDialog
 }
 
 async function resolveTargetPostRoot(page: Page, targetUrl: string) {
@@ -443,6 +471,228 @@ function isGroupExpertDialog(text: string) {
   return markers.some((item) => normalized.includes(item))
 }
 
+function isSwitchProfilesDialogText(text: string) {
+  const normalized = normalizeText(text).toLowerCase()
+  if (!normalized) return false
+
+  const markers = [
+    'switch profiles',
+    'see all profiles',
+    'switch to ',
+    'switch now',
+    'beralih profil',
+    'lihat semua profil',
+    'beralih ke ',
+  ]
+
+  return markers.some((item) => normalized.includes(item))
+}
+
+function isMemberInviteDialogText(text: string) {
+  const normalized = normalizeText(text).toLowerCase()
+  if (!normalized) return false
+
+  const titleMarkers = [
+    'invite friends',
+    'undang teman',
+    'invite people',
+    'undang orang',
+    'invite members',
+    'undang anggota',
+  ]
+  const bodyMarkers = [
+    'all friends',
+    'semua teman',
+    'select all',
+    'pilih semua',
+    'not invited',
+    'belum diundang',
+    'send invites',
+    'send invite',
+    'kirim undangan',
+    'search in all friends',
+    'cari di semua teman',
+  ]
+
+  const hasTitleMarker = titleMarkers.some((item) => normalized.includes(item))
+  const bodyMarkerCount = bodyMarkers.filter((item) => normalized.includes(item)).length
+
+  return (hasTitleMarker && bodyMarkerCount >= 1) || bodyMarkerCount >= 2
+}
+
+async function isLikelyMemberInviteDialog(dialog: Locator) {
+  const dialogLabel = normalizeText(await dialog.getAttribute('aria-label').catch(() => ''))
+  if (/(invite friends|undang teman)/i.test(dialogLabel)) return true
+
+  const visibleMarker = await firstVisibleLocator(dialog, [
+    '[aria-label="Invite friends"]',
+    '[aria-label="Undang teman"]',
+    '[aria-label="All friends"]',
+    '[aria-label="Semua teman"]',
+    '[aria-label^="Select All"]',
+    '[aria-label^="Pilih Semua"]',
+    '[aria-label="Send Invites"]',
+    '[aria-label="Send invites"]',
+    '[aria-label="Kirim undangan"]',
+    'button:has-text("Send Invites")',
+    'button:has-text("Kirim undangan")',
+  ])
+  if (visibleMarker) return true
+
+  const dialogText = normalizeText(await dialog.innerText().catch(() => ''))
+  return isMemberInviteDialogText(dialogText)
+}
+
+async function tryOpenGroupInviteDialogFromMenu(
+  page: Page,
+  moreOptionsCandidates: Locator[],
+  inviteMenuItemCandidates: Locator[],
+  locationLabel: string
+): Promise<{
+  inviteTrigger: Locator | null
+  dialog: Locator | null
+  invalidReason: string | null
+  observation: string | null
+}> {
+  const moreOptionsButton = await waitForVisibleCandidate(
+    moreOptionsCandidates,
+    [0, 1200, 2500, 4000]
+  )
+  if (!moreOptionsButton) {
+    return {
+      inviteTrigger: null,
+      dialog: null,
+      invalidReason: null,
+      observation: `CTA see more options tidak terlihat pada ${locationLabel}.`,
+    }
+  }
+
+  await moreOptionsButton.scrollIntoViewIfNeeded().catch(() => {})
+  await clickBestEffort(moreOptionsButton)
+  await humanDelay(1500)
+
+  const inviteMenuItem = await waitForVisibleCandidate(
+    inviteMenuItemCandidates,
+    [0, 800, 1800, 3000]
+  )
+  if (!inviteMenuItem) {
+    await closeTopDialog(page)
+    return {
+      inviteTrigger: moreOptionsButton,
+      dialog: null,
+      invalidReason: null,
+      observation: `Menu see more options terbuka pada ${locationLabel}, tetapi item Invite friends/people/members tidak terlihat.`,
+    }
+  }
+
+  await inviteMenuItem.scrollIntoViewIfNeeded().catch(() => {})
+  await clickBestEffort(inviteMenuItem)
+  await humanDelay(2000)
+
+  const dialog = await lastVisibleDialog(page)
+  if (!dialog) {
+    return {
+      inviteTrigger: inviteMenuItem,
+      dialog: null,
+      invalidReason: `Menu Invite friends pada ${locationLabel} dipilih, tetapi dialog invite tidak muncul.`,
+      observation: null,
+    }
+  }
+
+  const dialogText = normalizeText(await dialog.innerText().catch(() => ''))
+  if (isGroupExpertDialog(dialogText)) {
+    await closeTopDialog(page)
+    return {
+      inviteTrigger: inviteMenuItem,
+      dialog: null,
+      invalidReason: `Menu Invite friends pada ${locationLabel} membuka dialog group experts, bukan invite member.`,
+      observation: null,
+    }
+  }
+
+  if (isChatLikeInviteDialog(dialogText)) {
+    await closeTopDialog(page)
+    return {
+      inviteTrigger: inviteMenuItem,
+      dialog: null,
+      invalidReason: `Menu Invite friends pada ${locationLabel} membuka panel chat/share, bukan invite member.`,
+      observation: null,
+    }
+  }
+
+  if (!(await isLikelyMemberInviteDialog(dialog))) {
+    await closeTopDialog(page)
+    return {
+      inviteTrigger: inviteMenuItem,
+      dialog: null,
+      invalidReason: `Menu Invite friends pada ${locationLabel} membuka surface lain yang belum cocok dengan dialog invite member.`,
+      observation: null,
+    }
+  }
+
+  return {
+    inviteTrigger: inviteMenuItem,
+    dialog,
+    invalidReason: null,
+    observation: null,
+  }
+}
+
+async function resolveSwitchProfilesDialog(
+  page: Page,
+  dialog: Locator
+): Promise<{
+  switched: boolean
+  observation: string | null
+}> {
+  const switchButtonCandidates = [
+    dialog.locator('[role="button"][aria-label="Switch"]'),
+    dialog.locator('[role="button"][aria-label="Beralih"]'),
+    dialog.locator('[role="button"][aria-label^="Switch to "]'),
+    dialog.locator('[role="button"][aria-label^="Beralih ke "]'),
+    dialog.locator('button').filter({ hasText: 'Switch' }),
+    dialog.locator('button').filter({ hasText: 'Beralih' }),
+    dialog.locator('[role="button"]').filter({ hasText: 'Switch' }),
+    dialog.locator('[role="button"]').filter({ hasText: 'Beralih' }),
+  ]
+
+  let switchButton = await firstVisibleCandidate(switchButtonCandidates)
+  if (!switchButton) {
+    const seeAllProfilesButton = await firstVisibleCandidate([
+      dialog.getByText('See all profiles', { exact: true }),
+      dialog.getByText('Lihat semua profil', { exact: true }),
+      dialog.locator('[role="button"]').filter({ hasText: 'See all profiles' }),
+      dialog.locator('[role="button"]').filter({ hasText: 'Lihat semua profil' }),
+    ])
+
+    if (seeAllProfilesButton) {
+      await clickBestEffort(seeAllProfilesButton)
+      await humanDelay(1800)
+      switchButton = await firstVisibleCandidate(switchButtonCandidates)
+    }
+  }
+
+  if (!switchButton) {
+    return {
+      switched: false,
+      observation: 'Dialog Switch profiles muncul, tetapi tombol Switch tidak terlihat.',
+    }
+  }
+
+  const switchLabel =
+    normalizeText(await switchButton.getAttribute('aria-label').catch(() => '')) ||
+    normalizeText(await switchButton.innerText().catch(() => ''))
+
+  await clickBestEffort(switchButton)
+  await page.waitForLoadState('domcontentloaded').catch(() => {})
+  await humanDelay(4500)
+
+  return {
+    switched: true,
+    observation: `Dialog Switch profiles berhasil dipakai dengan aksi "${switchLabel || 'Switch'}".`,
+  }
+}
+
 function isInviteAlreadyStateText(text: string) {
   const normalized = normalizeText(text).toLowerCase()
   if (!normalized) return false
@@ -518,6 +768,268 @@ function isNoFriendRequestText(text: string) {
   ]
 
   return markers.some((item) => normalized.includes(item))
+}
+
+function isNoGroupRequestText(text: string) {
+  const normalized = normalizeText(text).toLowerCase()
+  if (!normalized) return false
+
+  const markers = [
+    'no pending member requests',
+    'no pending members',
+    'no pending requests',
+    'no new member requests',
+    'there are no pending members',
+    'you have no pending requests',
+    'tidak ada permintaan anggota',
+    'tidak ada permintaan bergabung',
+    'belum ada permintaan anggota',
+    'semua permintaan anggota sudah diproses',
+  ]
+
+  return markers.some((item) => normalized.includes(item))
+}
+
+function resolveGroupBaseUrl(value: string | null | undefined) {
+  const normalized = normalizeFacebookUrl(value)
+  if (!normalized) return ''
+
+  try {
+    const parsed = new URL(normalized)
+    const match = parsed.pathname.match(/^\/groups\/([^/?#]+)/i)
+    if (!match?.[1]) return normalized
+    return `https://www.facebook.com/groups/${match[1]}`
+  } catch {
+    return normalized
+  }
+}
+
+function groupMemberRequestUrls(value: string | null | undefined) {
+  const normalized = normalizeFacebookUrl(value)
+  const baseUrl = resolveGroupBaseUrl(value)
+  const candidates = [
+    normalized,
+    baseUrl,
+    baseUrl ? `${baseUrl}/member_requests` : '',
+    baseUrl ? `${baseUrl}/pending_members` : '',
+    baseUrl ? `${baseUrl}/admin_assist?tab=member_requests` : '',
+    baseUrl ? `${baseUrl}/member-requests` : '',
+  ]
+
+  const seen = new Set<string>()
+  return candidates.filter((candidate) => {
+    const key = normalizeText(candidate)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function resolveCreatedGroupUrl(value: string | null | undefined) {
+  const baseUrl = resolveGroupBaseUrl(value)
+  if (!baseUrl) return ''
+  if (/\/groups\/create\b/i.test(baseUrl)) return ''
+  return baseUrl
+}
+
+async function fillFirstVisibleInput(root: Page | Locator, selectors: string[], value: string) {
+  const input = await firstVisibleLocator(root, selectors)
+  if (!input) return false
+  await input.scrollIntoViewIfNeeded().catch(() => {})
+  await replaceInputValue(input, value)
+  return true
+}
+
+async function snapshotGroupRequestSurface(page: Page) {
+  const snapshot = await page
+    .evaluate(() => {
+      const normalize = (value: string | null | undefined) =>
+        String(value ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+      const isVisible = (element: Element) => {
+        const node = element as HTMLElement
+        const style = window.getComputedStyle(node)
+        const rect = node.getBoundingClientRect()
+        return (
+          style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          rect.width > 0 &&
+          rect.height > 0
+        )
+      }
+
+      const keywords = [
+        'member',
+        'request',
+        'approve',
+        'setujui',
+        'manage',
+        'admin',
+        'pending',
+        'join',
+        'anggota',
+        'permintaan',
+        'gabung',
+        'moderation',
+      ]
+      const selectors = [
+        'button',
+        '[role="button"]',
+        'a[href]',
+        '[role="link"]',
+        '[role="tab"]',
+        '[aria-label]',
+        'h1',
+        'h2',
+        'h3',
+      ]
+
+      const controls: string[] = []
+      const seen = new Set<string>()
+      for (const node of Array.from(document.querySelectorAll(selectors.join(',')))) {
+        if (!(node instanceof HTMLElement)) continue
+        if (!isVisible(node)) continue
+
+        const label = normalize(node.getAttribute('aria-label'))
+        const text = normalize(node.innerText || node.textContent)
+        const value = label || text
+        if (!value) continue
+
+        const lowered = value.toLowerCase()
+        if (!keywords.some((keyword) => lowered.includes(keyword))) continue
+        if (seen.has(lowered)) continue
+        seen.add(lowered)
+        controls.push(value)
+        if (controls.length >= 10) break
+      }
+
+      const bodyLines = normalize(document.body?.innerText)
+        .split(/(?<=[.!?])\s+|\n+/)
+        .map((item) => normalize(item))
+        .filter(Boolean)
+        .filter((line) => keywords.some((keyword) => line.toLowerCase().includes(keyword)))
+        .slice(0, 6)
+
+      return {
+        title: normalize(document.title) || null,
+        url: window.location.href,
+        controls,
+        bodyLines,
+      }
+    })
+    .catch(() => null)
+
+  if (!snapshot) return 'surface=tidak terbaca'
+
+  const parts = [
+    snapshot.title ? `title=${snapshot.title}` : null,
+    snapshot.url ? `url=${snapshot.url}` : null,
+    snapshot.controls.length ? `controls=${snapshot.controls.join(' | ')}` : 'controls=tidak ada',
+    snapshot.bodyLines.length ? `body=${snapshot.bodyLines.join(' | ')}` : 'body=tidak ada',
+  ].filter(Boolean)
+
+  return parts.join('; ')
+}
+
+type ConfirmedRequestProfile = {
+  profileId: string | null
+  profileUrl: string | null
+  profileName: string | null
+}
+
+async function snapshotConfirmedRequestProfile(
+  button: Locator
+): Promise<ConfirmedRequestProfile | null> {
+  const snapshot = await button
+    .evaluate((node) => {
+      const normalize = (value: string | null | undefined) =>
+        String(value ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+      const blocked = new Set([
+        'friends',
+        'friend',
+        'teman',
+        'confirm',
+        'konfirmasi',
+        'delete',
+        'hapus',
+        'see all',
+        'lihat semua',
+        'marketplace',
+        'watch',
+        'gaming',
+        'messages',
+        'friends/requests',
+        'friends/center',
+      ])
+
+      const getCandidateLink = (root: Element) => {
+        const anchors = Array.from(root.querySelectorAll('a[href]'))
+        for (const anchor of anchors) {
+          const rawHref = anchor.getAttribute('href')
+          if (!rawHref) continue
+
+          try {
+            const url = new URL(rawHref, window.location.origin)
+            if (!/(^|\.)facebook\.com$/i.test(url.hostname)) continue
+
+            if (/^\/profile\.php$/i.test(url.pathname) && url.searchParams.get('id')) {
+              return { href: url.toString(), text: normalize(anchor.textContent) }
+            }
+
+            const segment = url.pathname.split('/').filter(Boolean)[0]?.toLowerCase() ?? ''
+            if (!segment || blocked.has(segment)) continue
+
+            return { href: url.toString(), text: normalize(anchor.textContent) }
+          } catch {
+            continue
+          }
+        }
+
+        return null
+      }
+
+      let current = node instanceof Element ? node : null
+      for (let depth = 0; current && depth < 7; depth++, current = current.parentElement) {
+        const link = getCandidateLink(current)
+        const texts = [
+          link?.text,
+          current.querySelector('strong')?.textContent,
+          current.querySelector('h2, h3, h4')?.textContent,
+          current.getAttribute('aria-label'),
+        ]
+          .map((item) => normalize(item))
+          .filter(Boolean)
+
+        if (link?.href || texts.length) {
+          return {
+            href: link?.href ?? null,
+            name: texts[0] ?? null,
+          }
+        }
+      }
+
+      return null
+    })
+    .catch(() => null)
+
+  if (!snapshot) return null
+
+  const pUrl = normalizeFacebookUrl(snapshot.href)
+  const profileId = pUrl ? profileUrlToId(pUrl) : null
+  const profileName = pickProfileName(snapshot.name, fallbackProfileName(profileId))
+
+  if (!profileId && !profileName) return null
+
+  return {
+    profileId,
+    profileUrl: pUrl ? (profileId ? canonicalProfileUrl(profileId) : pUrl) : null,
+    profileName: profileName || fallbackProfileName(profileId),
+  }
 }
 
 function isDeletedContentText(text: string) {
@@ -1041,8 +1553,7 @@ export async function extractProfileMetadataFromPage(
         cleanDocumentTitle(snapshot.title),
         ...snapshot.headings,
         profile.profileName
-      ) ??
-      fallbackProfileName(resolvedProfileId),
+      ) ?? fallbackProfileName(resolvedProfileId),
     friendCount: parseCountByLabels(snapshot.bodyText, ['friends', 'friend', 'teman']),
     mutualFriendCount: parseCountByLabels(snapshot.bodyText, [
       'mutual friends',
@@ -1104,7 +1615,8 @@ export async function runScrapeProfile(
 
   const seen = new Set<string>()
   const out: ScrapedProfile[] = []
-  const sourceOwnerId = config.scrapeProfileType === 'engagement_post' ? profileUrlToId(targetUrl) : null
+  const sourceOwnerId =
+    config.scrapeProfileType === 'engagement_post' ? profileUrlToId(targetUrl) : null
 
   for (const row of rows) {
     const resolvedUrl = normalizeFacebookUrl(row.href)
@@ -1218,7 +1730,12 @@ export async function runAutoShare(
   await page.goto(groupUrl(group), { waitUntil: 'domcontentloaded', timeout: 60000 })
   await humanDelay(2500)
 
-  let pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  let pageBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isLoginWallText(pageBodyText)) {
     const topDialog = await lastVisibleDialog(page)
     const dialogText = normalizeText(await topDialog?.innerText().catch(() => ''))
@@ -1237,7 +1754,12 @@ export async function runAutoShare(
     )
     .first()
   if ((await composer.count()) === 0) {
-    pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+    pageBodyText = normalizeText(
+      await page
+        .locator('body')
+        .innerText()
+        .catch(() => '')
+    )
     if (isLoginWallText(pageBodyText)) {
       return {
         status: 'skipped',
@@ -1357,7 +1879,12 @@ export async function runAutoLike(
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const pageBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isLoginWallText(pageBodyText)) {
     return {
       status: 'skipped',
@@ -1464,7 +1991,12 @@ export async function runAutoComment(
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const pageBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isLoginWallText(pageBodyText)) {
     return {
       status: 'skipped',
@@ -1574,7 +2106,12 @@ export async function runAutoComment(
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const refreshedBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const refreshedBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   const commentAppeared = refreshedBodyText.includes(commentText)
   if (!commentAppeared) {
     return {
@@ -1629,7 +2166,9 @@ async function resolveDeleteMenuButton(
   return (
     (targetRoot ? await firstVisibleLocator(targetRoot, exactSelectors) : null) ||
     (await firstVisibleLocator(page, exactSelectors)) ||
-    (targetRoot && overflowSelectors.length ? await firstVisibleLocator(targetRoot, overflowSelectors) : null)
+    (targetRoot && overflowSelectors.length
+      ? await firstVisibleLocator(targetRoot, overflowSelectors)
+      : null)
   )
 }
 
@@ -1659,17 +2198,18 @@ async function resolveDeleteConfirm(page: Page) {
   ])
 }
 
-async function verifyDeleteResult(
-  page: Page,
-  targetUrl: string,
-  deleteType: 'post' | 'comment'
-) {
+async function verifyDeleteResult(page: Page, targetUrl: string, deleteType: 'post' | 'comment') {
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null)
   await humanDelay(2500)
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const bodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const bodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isDeletedContentText(bodyText)) return true
 
   if (deleteType === 'comment') {
@@ -1741,7 +2281,12 @@ export async function runAutoDelete(
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const pageBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isLoginWallText(pageBodyText)) {
     return {
       status: 'skipped',
@@ -1817,7 +2362,12 @@ export async function runAutoInbox(
   await page.goto(profileUrl(profile), { waitUntil: 'domcontentloaded', timeout: 60000 })
   await humanDelay(2500)
 
-  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const pageBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isLoginWallText(pageBodyText)) {
     return {
       status: 'skipped',
@@ -1966,6 +2516,25 @@ export async function runAutoJoin(page: Page, group: GroupTarget): Promise<Actio
 export async function runAutoAddFriend(page: Page, profile: ProfileTarget): Promise<ActionResult> {
   await page.goto(profileUrl(profile), { waitUntil: 'domcontentloaded', timeout: 60000 })
   await humanDelay(2500)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(1200)
+
+  const bodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
+  if (!bodyText) {
+    return { status: 'failed', message: 'Halaman profile gagal dimuat.' }
+  }
+
+  if (isLoginWallText(bodyText)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall pada profile target.',
+    }
+  }
 
   const addFriendBtn = page
     .locator(
@@ -1974,7 +2543,22 @@ export async function runAutoAddFriend(page: Page, profile: ProfileTarget): Prom
     .first()
 
   if ((await addFriendBtn.count()) === 0) {
-    return { status: 'skipped', message: 'Tombol Add Friend tidak ditemukan atau sudah berteman.' }
+    const friendshipButton = await firstVisibleLocator(page, [
+      '[aria-label="Friends"]',
+      '[aria-label="Teman"]',
+      '[aria-label*="Friends"]',
+      '[aria-label*="Teman"]',
+      'div[role="button"]:has-text("Friends")',
+      'div[role="button"]:has-text("Teman")',
+      'button:has-text("Friends")',
+      'button:has-text("Teman")',
+    ])
+
+    if (friendshipButton) {
+      return { status: 'skipped', message: 'Target sudah berteman.' }
+    }
+
+    return { status: 'skipped', message: 'Tombol Add Friend tidak ditemukan pada profile target.' }
   }
 
   await addFriendBtn.click()
@@ -1988,7 +2572,12 @@ export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promi
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const bodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const bodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (!bodyText) {
     return { status: 'failed', message: 'Halaman profile gagal dimuat.' }
   }
@@ -2047,18 +2636,18 @@ export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promi
         ])
       : null) ||
     (await firstVisibleLocator(page, [
-    '[aria-label="Unfriend"]',
-    '[aria-label="Hapus pertemanan"]',
-    '[aria-label="Batalkan pertemanan"]',
-    '[role="menuitem"]:has-text("Unfriend")',
-    '[role="menuitem"]:has-text("Hapus pertemanan")',
-    '[role="menuitem"]:has-text("Batalkan pertemanan")',
-    'div[role="button"]:has-text("Unfriend")',
-    'div[role="button"]:has-text("Hapus pertemanan")',
-    'div[role="button"]:has-text("Batalkan pertemanan")',
-    'button:has-text("Unfriend")',
-    'button:has-text("Hapus pertemanan")',
-    'button:has-text("Batalkan pertemanan")',
+      '[aria-label="Unfriend"]',
+      '[aria-label="Hapus pertemanan"]',
+      '[aria-label="Batalkan pertemanan"]',
+      '[role="menuitem"]:has-text("Unfriend")',
+      '[role="menuitem"]:has-text("Hapus pertemanan")',
+      '[role="menuitem"]:has-text("Batalkan pertemanan")',
+      'div[role="button"]:has-text("Unfriend")',
+      'div[role="button"]:has-text("Hapus pertemanan")',
+      'div[role="button"]:has-text("Batalkan pertemanan")',
+      'button:has-text("Unfriend")',
+      'button:has-text("Hapus pertemanan")',
+      'button:has-text("Batalkan pertemanan")',
     ]))
 
   if (!unfriendButton) {
@@ -2116,12 +2705,19 @@ export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promi
     await humanDelay(1800)
   }
 
-  await page.goto(profileUrl(profile), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null)
+  await page
+    .goto(profileUrl(profile), { waitUntil: 'domcontentloaded', timeout: 60000 })
+    .catch(() => null)
   await humanDelay(2200)
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const refreshedBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const refreshedBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isLoginWallText(refreshedBodyText)) {
     return {
       status: 'skipped',
@@ -2156,15 +2752,387 @@ export async function runAutoUnfriend(page: Page, profile: ProfileTarget): Promi
   }
 }
 
-export async function runAutoConfirm(
+export async function runAutoCreate(
   page: Page,
-  config: Pick<CampaignConfig, 'confirmType'>
-): Promise<ActionResult & { processedCount: number }> {
-  if ((config.confirmType ?? 'friend') !== 'friend') {
+  config: Pick<CampaignConfig, 'createType' | 'caption' | 'groupPrivacy'> & { name: string }
+): Promise<ActionResult> {
+  if ((config.createType ?? 'group') !== 'group') {
     return {
       status: 'skipped',
-      message: 'Auto confirm tipe group belum diimplementasikan.',
-      processedCount: 0,
+      message: 'Auto create saat ini baru mendukung mode group.',
+    }
+  }
+
+  const groupName = normalizeText(config.name)
+  if (!groupName) {
+    return {
+      status: 'failed',
+      message:
+        'Auto create group membutuhkan nama campaign yang valid untuk dipakai sebagai nama group.',
+    }
+  }
+
+  const description = normalizeText(config.caption)
+  const privacy =
+    normalizeText(config.groupPrivacy).toLowerCase() === 'public' ? 'public' : 'private'
+  const candidateUrls = [
+    'https://www.facebook.com/groups/create/',
+    'https://www.facebook.com/groups/create',
+  ]
+  const nameInputSelectors = [
+    'input[aria-label="Group name"]',
+    'input[aria-label="Nama grup"]',
+    'input[placeholder="Group name"]',
+    'input[placeholder="Nama grup"]',
+    'input[name="group_name"]',
+    'input[type="text"]',
+  ]
+  const descriptionSelectors = [
+    'textarea[aria-label="Description"]',
+    'textarea[aria-label="Deskripsi"]',
+    '[role="textbox"][aria-label="Description"]',
+    '[role="textbox"][aria-label="Deskripsi"]',
+    'textarea[name="description"]',
+  ]
+  const createButtonCandidates = [
+    page.locator('button').filter({ hasText: /^Create$/ }),
+    page.locator('button').filter({ hasText: /^Buat$/ }),
+    page.locator('div[role="button"]').filter({ hasText: /^Create$/ }),
+    page.locator('div[role="button"]').filter({ hasText: /^Buat$/ }),
+    page.locator('[aria-label="Create"]'),
+    page.locator('[aria-label="Buat"]'),
+  ]
+  const privacyChooserCandidates = [
+    page.locator('[role="button"]').filter({ hasText: /Privacy|Privasi/i }),
+    page.locator('button').filter({ hasText: /Privacy|Privasi/i }),
+    page.locator('[aria-label*="Privacy"]'),
+    page.locator('[aria-label*="Privasi"]'),
+  ]
+  const privateOptionCandidates = [
+    page.locator('[role="radio"]').filter({ hasText: /^Private$/ }),
+    page.locator('[role="radio"]').filter({ hasText: /^Privat$/ }),
+    page.locator('[role="option"]').filter({ hasText: /^Private$/ }),
+    page.locator('[role="option"]').filter({ hasText: /^Privat$/ }),
+    page.locator('[role="button"]').filter({ hasText: /^Private$/ }),
+    page.locator('[role="button"]').filter({ hasText: /^Privat$/ }),
+    page.locator('label').filter({ hasText: /^Private$/ }),
+    page.locator('label').filter({ hasText: /^Privat$/ }),
+  ]
+  const publicOptionCandidates = [
+    page.locator('[role="radio"]').filter({ hasText: /^Public$/ }),
+    page.locator('[role="radio"]').filter({ hasText: /^Publik$/ }),
+    page.locator('[role="option"]').filter({ hasText: /^Public$/ }),
+    page.locator('[role="option"]').filter({ hasText: /^Publik$/ }),
+    page.locator('[role="button"]').filter({ hasText: /^Public$/ }),
+    page.locator('[role="button"]').filter({ hasText: /^Publik$/ }),
+    page.locator('label').filter({ hasText: /^Public$/ }),
+    page.locator('label').filter({ hasText: /^Publik$/ }),
+  ]
+
+  let nameInputReady = false
+  let lastBodyText = ''
+  let lastObservation = ''
+
+  for (const candidateUrl of candidateUrls) {
+    await page
+      .goto(candidateUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      .catch(() => null)
+    await humanDelay(2500)
+    await resolveFacebookContinueAs(page)
+    await humanDelay(1500)
+
+    lastBodyText = normalizeText(
+      await page
+        .locator('body')
+        .innerText()
+        .catch(() => '')
+    )
+    if (isLoginWallText(lastBodyText)) {
+      return {
+        status: 'skipped',
+        message: 'Facebook menampilkan login/public wall pada flow create group.',
+      }
+    }
+
+    nameInputReady = await fillFirstVisibleInput(page, nameInputSelectors, groupName)
+    if (nameInputReady) {
+      lastObservation = candidateUrl
+      break
+    }
+  }
+
+  if (!nameInputReady) {
+    return {
+      status: 'failed',
+      message: `Field nama group tidak ditemukan pada flow create group.${lastObservation ? ` Route terakhir: ${lastObservation}.` : ''}`,
+    }
+  }
+
+  if (description) {
+    await fillFirstVisibleInput(page, descriptionSelectors, description).catch(() => false)
+  }
+
+  const selectedPrivacyCandidates =
+    privacy === 'public' ? publicOptionCandidates : privateOptionCandidates
+  let privacySet = await firstVisibleCandidate(selectedPrivacyCandidates)
+  if (!privacySet) {
+    const chooser = await firstVisibleCandidate(privacyChooserCandidates)
+    if (chooser) {
+      await chooser.scrollIntoViewIfNeeded().catch(() => {})
+      await clickBestEffort(chooser)
+      await humanDelay(1200)
+      privacySet = await waitForVisibleCandidate(selectedPrivacyCandidates, [0, 600, 1500])
+    }
+  }
+
+  if (privacySet) {
+    await privacySet.scrollIntoViewIfNeeded().catch(() => {})
+    await clickBestEffort(privacySet)
+    await humanDelay(1000)
+  }
+
+  const createButton = await waitForVisibleCandidate(createButtonCandidates, [0, 800, 1600, 2600])
+  if (!createButton) {
+    return {
+      status: 'failed',
+      message: 'Tombol Create tidak ditemukan pada flow create group.',
+    }
+  }
+
+  await createButton.scrollIntoViewIfNeeded().catch(() => {})
+  await clickBestEffort(createButton)
+  await humanDelay(5000)
+  await resolveFacebookContinueAs(page)
+  await humanDelay(2000)
+
+  const bodyAfterSubmit = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
+  if (isLoginWallText(bodyAfterSubmit)) {
+    return {
+      status: 'skipped',
+      message: 'Facebook menampilkan login/public wall setelah submit create group.',
+    }
+  }
+
+  const createdUrl = resolveCreatedGroupUrl(page.url())
+  if (createdUrl) {
+    return {
+      status: 'done',
+      message: `Group "${groupName}" berhasil dibuat (${privacy}) di ${createdUrl}.`,
+    }
+  }
+
+  const postCreateMarkers = [
+    'invite',
+    'undang',
+    'manage group',
+    'kelola grup',
+    'admin assist',
+    'about this group',
+    'tentang grup ini',
+    groupName.toLowerCase(),
+  ]
+  if (postCreateMarkers.some((marker) => bodyAfterSubmit.toLowerCase().includes(marker))) {
+    return {
+      status: 'done',
+      message: `Flow create group "${groupName}" selesai. Verifikasi URL final belum stabil, tetapi surface group baru sudah terbuka.`,
+    }
+  }
+
+  return {
+    status: 'failed',
+    message: 'Submit create group sudah dijalankan, tetapi surface group baru belum terverifikasi.',
+  }
+}
+
+export async function runAutoConfirm(
+  page: Page,
+  config: Pick<CampaignConfig, 'confirmType' | 'url'>
+): Promise<
+  ActionResult & { processedCount: number; confirmedProfiles: ConfirmedRequestProfile[] }
+> {
+  if ((config.confirmType ?? 'friend') === 'group') {
+    const targetUrl = normalizeFacebookUrl(config.url)
+    if (!targetUrl) {
+      return {
+        status: 'failed',
+        message: 'Auto confirm group membutuhkan URL target group atau halaman member requests.',
+        processedCount: 0,
+        confirmedProfiles: [],
+      }
+    }
+
+    const approveSelectors = [
+      '[aria-label="Approve"]',
+      '[aria-label="Setujui"]',
+      'button:text-is("Approve")',
+      'button:text-is("Setujui")',
+      'div[role="button"]:text-is("Approve")',
+      'div[role="button"]:text-is("Setujui")',
+    ]
+    const mainContent = page.locator('[role="main"]').first()
+    const requestNavigationCandidates = [
+      mainContent.locator('[role="link"]').filter({ hasText: 'Member requests' }),
+      page.locator('[role="link"]').filter({ hasText: 'Member requests' }),
+      mainContent.locator('[role="link"]').filter({ hasText: 'Pending members' }),
+      page.locator('[role="link"]').filter({ hasText: 'Pending members' }),
+      mainContent.locator('[role="link"]').filter({ hasText: 'Manage requests' }),
+      page.locator('[role="link"]').filter({ hasText: 'Manage requests' }),
+      mainContent.locator('[role="link"]').filter({ hasText: 'Join requests' }),
+      page.locator('[role="link"]').filter({ hasText: 'Join requests' }),
+      mainContent.locator('[role="link"]').filter({ hasText: 'Permintaan anggota' }),
+      page.locator('[role="link"]').filter({ hasText: 'Permintaan anggota' }),
+      mainContent.locator('[role="link"]').filter({ hasText: 'Permintaan gabung' }),
+      page.locator('[role="link"]').filter({ hasText: 'Permintaan gabung' }),
+      mainContent.locator('[role="button"]').filter({ hasText: 'Member requests' }),
+      page.locator('[role="button"]').filter({ hasText: 'Member requests' }),
+      mainContent.locator('[role="button"]').filter({ hasText: 'Manage requests' }),
+      page.locator('[role="button"]').filter({ hasText: 'Manage requests' }),
+      mainContent.locator('[role="tab"]').filter({ hasText: 'Member requests' }),
+      page.locator('[role="tab"]').filter({ hasText: 'Member requests' }),
+      mainContent.locator('[role="tab"]').filter({ hasText: 'Pending members' }),
+      page.locator('[role="tab"]').filter({ hasText: 'Pending members' }),
+    ]
+    const candidateUrls = groupMemberRequestUrls(targetUrl)
+    const routeObservations: string[] = []
+    let lastBodyText = ''
+    let initialButton: Locator | null = null
+
+    for (const candidateUrl of candidateUrls) {
+      await page.goto(candidateUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      })
+      await humanDelay(2500)
+      await resolveFacebookContinueAs(page)
+      await humanDelay(1200)
+
+      const bodyText = normalizeText(
+        await page
+          .locator('body')
+          .innerText()
+          .catch(() => '')
+      )
+      lastBodyText = bodyText
+
+      if (isLoginWallText(bodyText)) {
+        return {
+          status: 'skipped',
+          message: 'Facebook menampilkan login/public wall pada halaman member requests group.',
+          processedCount: 0,
+          confirmedProfiles: [],
+        }
+      }
+
+      initialButton =
+        (await firstVisibleLocator(mainContent, approveSelectors)) ||
+        (await firstVisibleLocator(page, approveSelectors))
+
+      let navigationSummary: string | null = null
+      if (!initialButton) {
+        const requestNavigation = await firstVisibleCandidate(requestNavigationCandidates)
+        if (requestNavigation) {
+          const navigationLabel = normalizeText(
+            (await requestNavigation.getAttribute('aria-label').catch(() => '')) ||
+              (await requestNavigation.innerText().catch(() => ''))
+          )
+          await clickBestEffort(requestNavigation)
+          await humanDelay(2200)
+
+          const navigatedBodyText = normalizeText(
+            await page
+              .locator('body')
+              .innerText()
+              .catch(() => '')
+          )
+          lastBodyText = navigatedBodyText
+          initialButton =
+            (await firstVisibleLocator(mainContent, approveSelectors)) ||
+            (await firstVisibleLocator(page, approveSelectors))
+          navigationSummary = `nav=${navigationLabel || 'member requests'}`
+        }
+      }
+
+      const surfaceSummary = await snapshotGroupRequestSurface(page)
+
+      routeObservations.push(
+        `${candidateUrl} => ${
+          initialButton
+            ? 'approve terlihat'
+            : isNoGroupRequestText(lastBodyText)
+              ? 'tidak ada request'
+              : 'approve tidak terlihat'
+        }${navigationSummary ? `; ${navigationSummary}` : ''}; ${surfaceSummary}`
+      )
+
+      if (initialButton) break
+    }
+
+    if (!initialButton) {
+      const observationSummary = routeObservations.length
+        ? ` Jalur cek: ${routeObservations.join(' | ')}`
+        : ''
+      return {
+        status: isNoGroupRequestText(lastBodyText) ? 'skipped' : 'failed',
+        message: isNoGroupRequestText(lastBodyText)
+          ? `Tidak ada permintaan member group yang siap dikonfirmasi.${observationSummary}`
+          : `Tombol Approve tidak ditemukan pada halaman member requests group.${observationSummary}`,
+        processedCount: 0,
+        confirmedProfiles: [],
+      }
+    }
+
+    const resolveApproveButton = async () =>
+      (await firstVisibleLocator(mainContent, approveSelectors)) ||
+      (await firstVisibleLocator(page, approveSelectors))
+
+    let processedCount = 0
+    const maxProcessed = 10
+    for (let index = 0; index < maxProcessed; index++) {
+      const button = await resolveApproveButton()
+      if (!button) break
+
+      await clickBestEffort(button)
+      processedCount++
+      await humanDelay(2000)
+
+      const refreshedBodyText = normalizeText(
+        await page
+          .locator('body')
+          .innerText()
+          .catch(() => '')
+      )
+      if (isLoginWallText(refreshedBodyText)) {
+        return {
+          status: processedCount > 0 ? 'done' : 'skipped',
+          message:
+            processedCount > 0
+              ? `${processedCount} permintaan member group dikonfirmasi sebelum Facebook menampilkan login/public wall.`
+              : 'Facebook menampilkan login/public wall saat memproses member requests group.',
+          processedCount,
+          confirmedProfiles: [],
+        }
+      }
+    }
+
+    if (processedCount === 0) {
+      return {
+        status: 'skipped',
+        message: 'Tidak ada permintaan member group yang berhasil dikonfirmasi.',
+        processedCount: 0,
+        confirmedProfiles: [],
+      }
+    }
+
+    return {
+      status: 'done',
+      message: `${processedCount} permintaan member group dikonfirmasi.`,
+      processedCount,
+      confirmedProfiles: [],
     }
   }
 
@@ -2176,12 +3144,18 @@ export async function runAutoConfirm(
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  const pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const pageBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   if (isLoginWallText(pageBodyText)) {
     return {
       status: 'skipped',
       message: 'Facebook menampilkan login/public wall pada halaman friend requests.',
       processedCount: 0,
+      confirmedProfiles: [],
     }
   }
 
@@ -2206,20 +3180,35 @@ export async function runAutoConfirm(
         ? 'Tidak ada permintaan pertemanan yang siap dikonfirmasi.'
         : 'Tombol Confirm tidak ditemukan pada halaman friend requests.',
       processedCount: 0,
+      confirmedProfiles: [],
     }
   }
 
   let processedCount = 0
+  const confirmedProfiles: ConfirmedRequestProfile[] = []
+  const seenConfirmedProfileIds = new Set<string>()
   const maxProcessed = 10
   for (let index = 0; index < maxProcessed; index++) {
     const button = await resolveConfirmButton()
     if (!button) break
 
+    const requestProfile = await snapshotConfirmedRequestProfile(button)
     await clickBestEffort(button)
     processedCount++
+    if (requestProfile?.profileId && !seenConfirmedProfileIds.has(requestProfile.profileId)) {
+      seenConfirmedProfileIds.add(requestProfile.profileId)
+      confirmedProfiles.push(requestProfile)
+    } else if (requestProfile?.profileName && !requestProfile.profileId) {
+      confirmedProfiles.push(requestProfile)
+    }
     await humanDelay(2000)
 
-    const refreshedBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+    const refreshedBodyText = normalizeText(
+      await page
+        .locator('body')
+        .innerText()
+        .catch(() => '')
+    )
     if (isLoginWallText(refreshedBodyText)) {
       return {
         status: processedCount > 0 ? 'done' : 'skipped',
@@ -2228,6 +3217,7 @@ export async function runAutoConfirm(
             ? `${processedCount} permintaan pertemanan dikonfirmasi sebelum Facebook menampilkan login/public wall.`
             : 'Facebook menampilkan login/public wall saat memproses friend requests.',
         processedCount,
+        confirmedProfiles,
       }
     }
   }
@@ -2237,6 +3227,7 @@ export async function runAutoConfirm(
       status: 'skipped',
       message: 'Tidak ada permintaan pertemanan yang berhasil dikonfirmasi.',
       processedCount: 0,
+      confirmedProfiles: [],
     }
   }
 
@@ -2244,6 +3235,7 @@ export async function runAutoConfirm(
     status: 'done',
     message: `${processedCount} permintaan pertemanan dikonfirmasi.`,
     processedCount,
+    confirmedProfiles,
   }
 }
 
@@ -2270,7 +3262,12 @@ export async function runAutoInvite(
   await resolveFacebookContinueAs(page)
   await humanDelay(1200)
 
-  let pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  let pageBodyText = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
   let pageIdentitySwitched = false
   const mainContent = page.locator('[role="main"]').first()
   if (isLoginWallText(pageBodyText)) {
@@ -2314,6 +3311,77 @@ export async function runAutoInvite(
     'div[role="button"]:has-text("Tambah anggota")',
   ]
 
+  const groupMoreOptionsCandidates = [
+    mainContent.locator(
+      '[role="button"][aria-haspopup="menu"][aria-label="Profile settings see more options"]'
+    ),
+    page.locator(
+      '[role="button"][aria-haspopup="menu"][aria-label="Profile settings see more options"]'
+    ),
+    mainContent.locator('[aria-label="Profile settings see more options"]'),
+    page.locator('[aria-label="Profile settings see more options"]'),
+    mainContent.locator('[role="button"][aria-haspopup="menu"][aria-label*="see more options"]'),
+    page.locator('[role="button"][aria-haspopup="menu"][aria-label*="see more options"]'),
+    mainContent.locator('[aria-label*="see more options"]'),
+    page.locator('[aria-label*="see more options"]'),
+    mainContent.locator('[aria-haspopup="menu"][aria-label*="Profile settings"]'),
+    page.locator('[aria-haspopup="menu"][aria-label*="Profile settings"]'),
+  ]
+
+  const inviteMenuItemCandidates = [
+    page
+      .locator('[role="menu"][aria-label="Additional profile actions menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Invite friends' }),
+    page
+      .locator('[role="menu"][aria-label="Additional profile actions menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Undang teman' }),
+    page
+      .locator('[role="menu"][aria-label="Additional profile actions menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Invite people' }),
+    page
+      .locator('[role="menu"][aria-label="Additional profile actions menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Undang orang' }),
+    page
+      .locator('[role="menu"][aria-label="Additional profile actions menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Invite members' }),
+    page
+      .locator('[role="menu"][aria-label="Additional profile actions menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Undang anggota' }),
+    page.locator('[role="menuitem"]').filter({ hasText: 'Invite friends' }),
+    page.locator('[role="menuitem"]').filter({ hasText: 'Undang teman' }),
+    page.locator('[role="menuitem"]').filter({ hasText: 'Invite people' }),
+    page.locator('[role="menuitem"]').filter({ hasText: 'Undang orang' }),
+    page.locator('[role="menuitem"]').filter({ hasText: 'Invite members' }),
+    page.locator('[role="menuitem"]').filter({ hasText: 'Undang anggota' }),
+    page
+      .locator('[role="menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Invite friends' }),
+    page.locator('[role="menu"]').locator('[role="menuitem"]').filter({ hasText: 'Undang teman' }),
+    page.locator('[role="menu"]').locator('[role="menuitem"]').filter({ hasText: 'Invite people' }),
+    page.locator('[role="menu"]').locator('[role="menuitem"]').filter({ hasText: 'Undang orang' }),
+    page
+      .locator('[role="menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Invite members' }),
+    page
+      .locator('[role="menu"]')
+      .locator('[role="menuitem"]')
+      .filter({ hasText: 'Undang anggota' }),
+    page.locator('[role="menu"]').getByText('Invite friends', { exact: true }),
+    page.locator('[role="menu"]').getByText('Undang teman', { exact: true }),
+    page.locator('[role="menu"]').getByText('Invite people', { exact: true }),
+    page.locator('[role="menu"]').getByText('Undang orang', { exact: true }),
+    page.locator('[role="menu"]').getByText('Invite members', { exact: true }),
+    page.locator('[role="menu"]').getByText('Undang anggota', { exact: true }),
+  ]
+
   const pageInviteCandidates = [
     mainContent.getByText('Invite friends to like your Page', { exact: true }),
     mainContent.getByText('Undang teman untuk menyukai Halaman Anda', { exact: true }),
@@ -2321,8 +3389,16 @@ export async function runAutoInvite(
   ]
 
   const pageMoreOptionsCandidates = [
+    page.locator(
+      '[role="button"][aria-haspopup="menu"][aria-label="Profile settings see more options"]'
+    ),
+    mainContent.locator(
+      '[role="button"][aria-haspopup="menu"][aria-label="Profile settings see more options"]'
+    ),
     page.locator('[aria-label="Profile settings see more options"]'),
     mainContent.locator('[aria-label="Profile settings see more options"]'),
+    page.locator('[role="button"][aria-haspopup="menu"][aria-label*="see more options"]'),
+    mainContent.locator('[role="button"][aria-haspopup="menu"][aria-label*="see more options"]'),
     page.locator('[aria-label*="see more options"]'),
     page.locator('[aria-haspopup="menu"][aria-label*="Profile settings"]'),
   ]
@@ -2340,7 +3416,12 @@ export async function runAutoInvite(
       if (switchPageButton) {
         await clickBestEffort(switchPageButton)
         await humanDelay(5000)
-        pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+        pageBodyText = normalizeText(
+          await page
+            .locator('body')
+            .innerText()
+            .catch(() => '')
+        )
         pageIdentitySwitched = true
       }
 
@@ -2357,15 +3438,92 @@ export async function runAutoInvite(
   let invalidInviteReason: string | null = null
   let dialog: Locator | null = null
   const pageShowsLoginWall = isLoginWallText(pageBodyText)
+  const groupInviteObservations: string[] = []
+  const pageInviteObservations: string[] = []
+  const summarizeObservedText = (value: string | null | undefined, maxLength = 180) => {
+    const normalized = normalizeText(value)
+    if (!normalized) return 'tidak ada'
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized
+  }
+  const describeLocatorSurface = async (locator: Locator | null) => {
+    if (!locator) return 'tidak ada'
+
+    const ariaLabel = normalizeText(await locator.getAttribute('aria-label').catch(() => ''))
+    if (ariaLabel) return ariaLabel
+
+    const text = normalizeText(await locator.innerText().catch(() => ''))
+    return summarizeObservedText(text)
+  }
+  const describeGroupSurface = async () => {
+    const visibleMoreOptions = await firstVisibleCandidate(groupMoreOptionsCandidates)
+    const visibleAddMembers = await firstVisibleLocator(mainContent, groupAddMemberSelectors)
+    const visibleInvite = await firstVisibleLocator(mainContent, openInviteSelectors)
+
+    return [
+      `see_more=${await describeLocatorSurface(visibleMoreOptions)}`,
+      `add_members=${await describeLocatorSurface(visibleAddMembers)}`,
+      `invite=${await describeLocatorSurface(visibleInvite)}`,
+    ].join('; ')
+  }
+  const describePageSurface = async () => {
+    const visiblePageInvite = await waitForVisibleCandidate(pageInviteCandidates, [0])
+    const visibleOpenInvite = await firstVisibleLocator(mainContent, openInviteSelectors)
+    const visibleMoreOptions = await waitForVisibleCandidate(pageMoreOptionsCandidates, [0])
+    const visibleSwitchButton = await firstVisibleCandidate([
+      mainContent.getByText('Switch Now', { exact: true }),
+      mainContent.getByText('Beralih sekarang', { exact: true }),
+      mainContent.getByText("Switch into Nadiva Beauty Shop's Page", { exact: false }),
+      page.locator('[role="main"] [aria-label="Switch Now"]'),
+      page.locator('[role="main"] [aria-label*="Switch"]'),
+    ])
+
+    return [
+      `page_invite=${await describeLocatorSurface(visiblePageInvite)}`,
+      `invite=${await describeLocatorSurface(visibleOpenInvite)}`,
+      `see_more=${await describeLocatorSurface(visibleMoreOptions)}`,
+      `switch=${await describeLocatorSurface(visibleSwitchButton)}`,
+    ].join('; ')
+  }
+  const describeDialogSurface = async (activeDialog: Locator | null) => {
+    if (!activeDialog) return 'dialog tidak ada'
+
+    const dialogLabel = normalizeText(await activeDialog.getAttribute('aria-label').catch(() => ''))
+    const dialogText = summarizeObservedText(await activeDialog.innerText().catch(() => ''))
+    return `label=${dialogLabel || 'tidak ada'}; text=${dialogText}`
+  }
 
   if (inviteType === 'group') {
-    const membersUrl = /\/members$/i.test(inviteTargetUrl) ? inviteTargetUrl : `${inviteTargetUrl}/members`
-    if (normalizeFacebookUrl(page.url()) !== membersUrl) {
+    const basePageMenuAttempt = await tryOpenGroupInviteDialogFromMenu(
+      page,
+      groupMoreOptionsCandidates,
+      inviteMenuItemCandidates,
+      'halaman group utama'
+    )
+    if (basePageMenuAttempt.inviteTrigger) {
+      inviteOpenButton = basePageMenuAttempt.inviteTrigger
+    }
+    if (basePageMenuAttempt.observation) {
+      groupInviteObservations.push(basePageMenuAttempt.observation)
+    }
+    if (basePageMenuAttempt.invalidReason) {
+      groupInviteObservations.push(basePageMenuAttempt.invalidReason)
+    }
+    dialog = basePageMenuAttempt.dialog
+
+    const membersUrl = /\/members$/i.test(inviteTargetUrl)
+      ? inviteTargetUrl
+      : `${inviteTargetUrl}/members`
+    if (!dialog && normalizeFacebookUrl(page.url()) !== membersUrl) {
       await page.goto(membersUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
       await humanDelay(2500)
       await resolveFacebookContinueAs(page)
       await humanDelay(1200)
-      pageBodyText = normalizeText(await page.locator('body').innerText().catch(() => ''))
+      pageBodyText = normalizeText(
+        await page
+          .locator('body')
+          .innerText()
+          .catch(() => '')
+      )
     }
 
     if (isLoginWallText(pageBodyText)) {
@@ -2375,22 +3533,48 @@ export async function runAutoInvite(
       }
     }
 
-    const addMembersButton = await firstVisibleLocator(mainContent, groupAddMemberSelectors)
-    if (addMembersButton) {
-      await addMembersButton.click()
-      await humanDelay(2000)
-      dialog = await lastVisibleDialog(page)
+    if (!dialog) {
+      const membersPageMenuAttempt = await tryOpenGroupInviteDialogFromMenu(
+        page,
+        groupMoreOptionsCandidates,
+        inviteMenuItemCandidates,
+        'halaman members group'
+      )
+      if (membersPageMenuAttempt.inviteTrigger) {
+        inviteOpenButton = membersPageMenuAttempt.inviteTrigger
+      }
+      if (membersPageMenuAttempt.observation) {
+        groupInviteObservations.push(membersPageMenuAttempt.observation)
+      }
+      if (membersPageMenuAttempt.invalidReason) {
+        groupInviteObservations.push(membersPageMenuAttempt.invalidReason)
+      }
+      dialog = membersPageMenuAttempt.dialog
+    }
 
-      if (dialog) {
-        const dialogText = normalizeText(await dialog.innerText().catch(() => ''))
-        if (isGroupExpertDialog(dialogText)) {
-          invalidInviteReason = 'CTA Add members yang tersedia membuka dialog group experts, bukan invite member.'
-          dialog = null
-          await closeTopDialog(page)
-        } else if (isChatLikeInviteDialog(dialogText)) {
-          invalidInviteReason = 'CTA Add members yang tersedia membuka panel chat/share, bukan invite member.'
-          dialog = null
-          await closeTopDialog(page)
+    if (!dialog) {
+      const addMembersButton = await firstVisibleLocator(mainContent, groupAddMemberSelectors)
+      if (addMembersButton) {
+        inviteOpenButton = addMembersButton
+        await addMembersButton.click()
+        await humanDelay(2000)
+        dialog = await lastVisibleDialog(page)
+
+        if (dialog) {
+          const dialogText = normalizeText(await dialog.innerText().catch(() => ''))
+          if (isGroupExpertDialog(dialogText)) {
+            invalidInviteReason = `CTA Add members yang tersedia membuka dialog group experts, bukan invite member. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            dialog = null
+            await closeTopDialog(page)
+          } else if (isChatLikeInviteDialog(dialogText)) {
+            invalidInviteReason = `CTA Add members yang tersedia membuka panel chat/share, bukan invite member. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            dialog = null
+            await closeTopDialog(page)
+          } else if (!(await isLikelyMemberInviteDialog(dialog))) {
+            invalidInviteReason = `CTA Add members membuka surface lain yang belum cocok dengan dialog invite member. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            dialog = null
+            await closeTopDialog(page)
+          }
         }
       }
     }
@@ -2405,60 +3589,205 @@ export async function runAutoInvite(
         if (dialog) {
           const dialogText = normalizeText(await dialog.innerText().catch(() => ''))
           if (isChatLikeInviteDialog(dialogText)) {
-            invalidInviteReason = 'Tombol Invite yang tersedia membuka panel chat/share, bukan invite member.'
+            invalidInviteReason = `Tombol Invite yang tersedia membuka panel chat/share, bukan invite member. Observasi dialog: ${await describeDialogSurface(dialog)}.`
             dialog = null
             await closeTopDialog(page)
           } else if (isGroupExpertDialog(dialogText)) {
-            invalidInviteReason = 'Tombol Invite yang tersedia membuka dialog group experts, bukan invite member.'
+            invalidInviteReason = `Tombol Invite yang tersedia membuka dialog group experts, bukan invite member. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            dialog = null
+            await closeTopDialog(page)
+          } else if (!(await isLikelyMemberInviteDialog(dialog))) {
+            invalidInviteReason = `Tombol Invite yang tersedia membuka surface lain yang belum cocok dengan dialog invite member. Observasi dialog: ${await describeDialogSurface(dialog)}.`
             dialog = null
             await closeTopDialog(page)
           }
         }
       }
     }
-
   } else {
-    inviteOpenButton =
-      (await waitForVisibleCandidate(pageInviteCandidates, [0, 1500, 2500])) ||
-      (await firstVisibleLocator(mainContent, openInviteSelectors))
+    for (let attempt = 0; attempt < 2 && !dialog; attempt++) {
+      inviteOpenButton =
+        (await waitForVisibleCandidate(pageInviteCandidates, [0, 1500, 2500])) ||
+        (await firstVisibleLocator(mainContent, openInviteSelectors))
 
-    if (inviteOpenButton) {
-      await clickBestEffort(inviteOpenButton)
-      await humanDelay(2000)
-      dialog = await lastVisibleDialog(page)
-    } else if (inviteType === 'page_follower') {
-      const pageMoreOptionsButton = await waitForVisibleCandidate(pageMoreOptionsCandidates, [
-        0, 1500, 3000, 5000,
-      ])
-      if (pageMoreOptionsButton) {
-        await clickBestEffort(pageMoreOptionsButton)
-        await humanDelay(1500)
+      let switchedViaDialog = false
 
-        const inviteMenuItem = await firstVisibleCandidate([
-          page.locator('[role="menuitem"]').filter({ hasText: 'Invite friends' }),
-          page.locator('[role="menuitem"]').filter({ hasText: 'Undang teman' }),
-          page.locator('[role="menu"]').locator('[role="menuitem"]').filter({ hasText: 'Invite friends' }),
-          page.locator('[role="menu"]').locator('[role="menuitem"]').filter({ hasText: 'Undang teman' }),
-        ])
+      if (inviteOpenButton) {
+        await clickBestEffort(inviteOpenButton)
+        await humanDelay(2000)
+        dialog = await lastVisibleDialog(page)
+        dialog = await waitForSettledDialog(page, dialog)
 
-        if (inviteMenuItem) {
-          await clickBestEffort(inviteMenuItem)
-          await humanDelay(2000)
-          dialog = await lastVisibleDialog(page)
-        } else {
-          const loginWallDialog = await lastVisibleDialog(page)
-          const loginWallText = normalizeText(await loginWallDialog?.innerText().catch(() => ''))
-          if (isLoginWallText(loginWallText || pageBodyText)) {
-            invalidInviteReason =
-              'Facebook menampilkan login wall saat membuka menu Page, jadi dialog invite follower belum bisa diakses.'
+        if (dialog) {
+          const dialogText = normalizeText(await dialog.innerText().catch(() => ''))
+          if (isSwitchProfilesDialogText(dialogText)) {
+            const switchResult = await resolveSwitchProfilesDialog(page, dialog)
+            if (switchResult.observation) pageInviteObservations.push(switchResult.observation)
+            dialog = null
+
+            if (switchResult.switched) {
+              pageIdentitySwitched = true
+              switchedViaDialog = true
+              pageBodyText = normalizeText(
+                await page
+                  .locator('body')
+                  .innerText()
+                  .catch(() => '')
+              )
+              await resolveFacebookContinueAs(page)
+              await humanDelay(1200)
+            } else {
+              invalidInviteReason = `CTA invite follower membuka dialog Switch profiles, tetapi switch identitas belum berhasil. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            }
+          } else if (isLoginWallText(dialogText)) {
+            invalidInviteReason = `Facebook menampilkan login wall setelah CTA invite follower diklik. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            pageInviteObservations.push(invalidInviteReason)
+            dialog = null
+            await closeTopDialog(page)
+          } else if (isChatLikeInviteDialog(dialogText)) {
+            invalidInviteReason = `CTA invite follower membuka panel chat/share, bukan dialog invite follower. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            pageInviteObservations.push(invalidInviteReason)
+            dialog = null
+            await closeTopDialog(page)
+          } else if (!(await isLikelyMemberInviteDialog(dialog))) {
+            invalidInviteReason = `CTA invite follower membuka surface lain yang belum cocok dengan dialog invite follower. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+            pageInviteObservations.push(invalidInviteReason)
+            dialog = null
+            await closeTopDialog(page)
           }
+        } else {
+          pageInviteObservations.push(
+            'CTA invite follower diklik, tetapi dialog invite tidak muncul.'
+          )
+        }
+      } else if (inviteType === 'page_follower') {
+        const pageMoreOptionsButton = await waitForVisibleCandidate(
+          pageMoreOptionsCandidates,
+          [0, 1500, 3000, 5000]
+        )
+        if (pageMoreOptionsButton) {
+          await pageMoreOptionsButton.scrollIntoViewIfNeeded().catch(() => {})
+          await clickBestEffort(pageMoreOptionsButton)
+          await humanDelay(1500)
+
+          const inviteMenuItem = await waitForVisibleCandidate(
+            inviteMenuItemCandidates,
+            [0, 800, 1800, 3000]
+          )
+
+          if (inviteMenuItem) {
+            inviteOpenButton = inviteMenuItem
+            await inviteMenuItem.scrollIntoViewIfNeeded().catch(() => {})
+            await clickBestEffort(inviteMenuItem)
+            await humanDelay(2000)
+            dialog = await lastVisibleDialog(page)
+            dialog = await waitForSettledDialog(page, dialog)
+
+            if (dialog) {
+              const dialogText = normalizeText(await dialog.innerText().catch(() => ''))
+              if (isSwitchProfilesDialogText(dialogText)) {
+                const switchResult = await resolveSwitchProfilesDialog(page, dialog)
+                if (switchResult.observation) pageInviteObservations.push(switchResult.observation)
+                dialog = null
+
+                if (switchResult.switched) {
+                  pageIdentitySwitched = true
+                  switchedViaDialog = true
+                  pageBodyText = normalizeText(
+                    await page
+                      .locator('body')
+                      .innerText()
+                      .catch(() => '')
+                  )
+                  await resolveFacebookContinueAs(page)
+                  await humanDelay(1200)
+                } else {
+                  invalidInviteReason = `Menu Invite friends pada Page membuka dialog Switch profiles, tetapi switch identitas belum berhasil. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+                }
+              } else if (isLoginWallText(dialogText)) {
+                invalidInviteReason = `Facebook menampilkan login wall saat membuka dialog invite follower dari menu Page. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+                pageInviteObservations.push(invalidInviteReason)
+                dialog = null
+                await closeTopDialog(page)
+              } else if (isChatLikeInviteDialog(dialogText)) {
+                invalidInviteReason = `Menu Invite friends pada Page membuka panel chat/share, bukan dialog invite follower. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+                pageInviteObservations.push(invalidInviteReason)
+                dialog = null
+                await closeTopDialog(page)
+              } else if (!(await isLikelyMemberInviteDialog(dialog))) {
+                invalidInviteReason = `Menu Invite friends pada Page membuka surface lain yang belum cocok dengan dialog invite follower. Observasi dialog: ${await describeDialogSurface(dialog)}.`
+                pageInviteObservations.push(invalidInviteReason)
+                dialog = null
+                await closeTopDialog(page)
+              }
+            } else {
+              pageInviteObservations.push(
+                'Menu Invite friends pada Page dipilih, tetapi dialog invite follower tidak muncul.'
+              )
+            }
+          } else {
+            const loginWallDialog = await lastVisibleDialog(page)
+            const loginWallText = normalizeText(await loginWallDialog?.innerText().catch(() => ''))
+            if (isLoginWallText(loginWallText || pageBodyText)) {
+              invalidInviteReason =
+                'Facebook menampilkan login wall saat membuka menu Page, jadi dialog invite follower belum bisa diakses.'
+              pageInviteObservations.push(invalidInviteReason)
+            } else {
+              pageInviteObservations.push(
+                'Menu see more options pada Page terbuka, tetapi item Invite friends/people/members tidak terlihat.'
+              )
+            }
+          }
+        } else {
+          pageInviteObservations.push(
+            'CTA see more options tidak terlihat pada halaman Page target.'
+          )
         }
       }
+
+      if (dialog || !switchedViaDialog) break
+
+      inviteOpenButton = null
+      invalidInviteReason = null
+      await page
+        .goto(inviteTargetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
+        .catch(() => {})
+      await humanDelay(2500)
+      await resolveFacebookContinueAs(page)
+      await humanDelay(1200)
+      pageBodyText = normalizeText(
+        await page
+          .locator('body')
+          .innerText()
+          .catch(() => '')
+      )
     }
   }
 
   if (!dialog) {
     if (invalidInviteReason) {
+      if (inviteType === 'group' && groupInviteObservations.length > 0) {
+        const details = groupInviteObservations
+          .filter((item, index, items) => items.indexOf(item) === index)
+          .join(' ')
+
+        return {
+          status: 'skipped',
+          message: `${invalidInviteReason} Jalur menu alternatif: ${details} Surface saat ini: ${await describeGroupSurface()}`,
+        }
+      }
+
+      if (inviteType === 'page_follower' && pageInviteObservations.length > 0) {
+        const details = pageInviteObservations
+          .filter((item, index, items) => items.indexOf(item) === index)
+          .join(' ')
+
+        return {
+          status: 'skipped',
+          message: `${invalidInviteReason} Jalur page invite: ${details} Surface saat ini: ${await describePageSurface()}`,
+        }
+      }
+
       return {
         status: 'skipped',
         message: invalidInviteReason,
@@ -2492,14 +3821,20 @@ export async function runAutoInvite(
 
       return {
         status: 'skipped',
-        message: `Tombol invite ${inviteType} tidak ditemukan.`,
+        message:
+          inviteType === 'group'
+            ? `Tombol invite ${inviteType} tidak ditemukan. Surface saat ini: ${await describeGroupSurface()}`
+            : inviteType === 'page_follower'
+              ? `Tombol invite ${inviteType} tidak ditemukan. Surface saat ini: ${await describePageSurface()}`
+              : `Tombol invite ${inviteType} tidak ditemukan.`,
       }
     }
 
     if (inviteType === 'page_follower' && pageIdentitySwitched) {
       return {
         status: 'skipped',
-        message: 'Identitas Page sudah aktif, tetapi CTA invite follower belum muncul di halaman.',
+        message:
+          'Identitas aktif sudah berganti, tetapi CTA invite follower belum muncul di halaman.',
       }
     }
 
@@ -2558,7 +3893,9 @@ export async function runAutoInvite(
       inviteType === 'page_follower'
         ? dialog.locator('[role="checkbox"]').filter({ hasText: term }).first()
         : dialog
-            .locator('[role="row"], [role="listitem"], [role="option"], li, div[data-visualcompletion]')
+            .locator(
+              '[role="row"], [role="listitem"], [role="option"], li, div[data-visualcompletion]'
+            )
             .filter({ hasText: term })
             .first()
 
@@ -2651,7 +3988,12 @@ export async function runAutoInvite(
 
   const dialogStillVisible = await dialog.isVisible().catch(() => false)
   const refreshedDialogText = normalizeText(await dialog.innerText().catch(() => ''))
-  const bodyAfterSend = normalizeText(await page.locator('body').innerText().catch(() => ''))
+  const bodyAfterSend = normalizeText(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  )
 
   if (isLoginWallText(refreshedDialogText || bodyAfterSend)) {
     return {

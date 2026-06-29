@@ -32,6 +32,7 @@ type CampaignDto = {
     deleteType?: CampaignDeleteType | null;
     confirmType?: CampaignConfirmType | null;
     createType?: CampaignCreateType | null;
+    groupPrivacy?: "public" | "private" | null;
     addFriendType?: CampaignAddFriendType | null;
   };
   targetGroupType: CampaignGroupType | null;
@@ -131,6 +132,7 @@ const form = useForm({
     deleteType: props.campaign.config.deleteType,
     confirmType: props.campaign.config.confirmType,
     createType: props.campaign.config.createType,
+    groupPrivacy: props.campaign.config.groupPrivacy ?? "private",
     addFriendType: props.campaign.config.addFriendType ?? "group",
   },
 });
@@ -158,7 +160,8 @@ const needCaption = computed(
     form.type === "auto_comment" ||
     form.type === "auto_post" ||
     form.type === "auto_inbox" ||
-    form.type === "auto_share"
+    form.type === "auto_share" ||
+    form.type === "auto_create"
 );
 
 const groupSearch = ref("");
@@ -486,7 +489,7 @@ const confirmTypeOptions = [
   {
     label: "Group",
     value: "group",
-    active: false,
+    active: true,
   },
 ];
 const createTypeOptions = [
@@ -498,12 +501,12 @@ const createTypeOptions = [
   {
     label: "Fanspage",
     value: "fanspage",
-    active: true,
+    active: false,
   },
   {
     label: "Event",
     value: "event",
-    active: true,
+    active: false,
   },
 ];
 </script>
@@ -918,9 +921,23 @@ const createTypeOptions = [
                 </option>
               </select>
               <p class="mt-1 text-xs text-muted-foreground">
-                Foundation `Auto Confirm` yang aktif sekarang fokus ke
-                <code>friend request</code> dulu. Jalur confirm tipe group masih diparkir
-                untuk phase berikutnya.
+                Foundation `Auto Confirm` sekarang mendukung
+                <code>friend request</code> dan fondasi awal
+                <code>group member request</code>.
+              </p>
+            </div>
+            <div v-if="form.config.confirmType === 'group'">
+              <label class="mb-1 block text-sm font-medium">URL Group / Member Requests</label>
+              <input
+                v-model="form.config.url"
+                type="url"
+                :class="fieldClass"
+                placeholder="https://www.facebook.com/groups/123456789/member_requests"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                Isi URL group target atau, lebih ideal, URL halaman
+                <code>member requests</code> agar worker bisa langsung mencari tombol
+                approve.
               </p>
             </div>
           </template>
@@ -933,10 +950,27 @@ const createTypeOptions = [
                   v-for="option in createTypeOptions"
                   :key="option.value"
                   :value="option.value"
+                  :disabled="!option.active"
                 >
-                  {{ option.label }}
+                  {{ option.label }}{{ option.active ? "" : " (Soon)" }}
                 </option>
               </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Foundation <code>Auto Create</code> fase ini baru menghidupkan mode
+                <code>group</code>. Jalur <code>fanspage</code> dan <code>event</code>
+                masih diparkir agar hasil tetap jujur.
+              </p>
+            </div>
+            <div v-if="form.config.createType === 'group'">
+              <label class="mb-1 block text-sm font-medium">Privasi Group</label>
+              <select v-model="form.config.groupPrivacy" :class="fieldClass">
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Nama campaign akan dipakai sebagai nama group saat worker membuat group
+                baru.
+              </p>
             </div>
           </template>
 
@@ -957,6 +991,8 @@ const createTypeOptions = [
                   ? "Template Message"
                   : form.type === "auto_comment"
                     ? "Comment Text"
+                    : form.type === "auto_create"
+                      ? "Deskripsi Group (opsional)"
                     : "Caption (opsional)"
               }}
             </label>
@@ -980,6 +1016,10 @@ const createTypeOptions = [
             </p>
             <p v-else-if="form.type === 'auto_comment'" class="mt-1 text-xs text-muted-foreground">
               Satu comment akan dikirim ke URL target oleh tiap akun yang dipilih.
+            </p>
+            <p v-else-if="form.type === 'auto_create'" class="mt-1 text-xs text-muted-foreground">
+              Deskripsi ini akan dicoba diisi ke field deskripsi/about group jika surface
+              Facebook menampilkannya.
             </p>
           </div>
 

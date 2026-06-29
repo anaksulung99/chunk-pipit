@@ -673,12 +673,24 @@ export default class CampaignsController {
       session.flash('error', 'Auto Confirm membutuhkan tipe confirm.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_confirm' && payload.config?.confirmType !== 'friend') {
-      session.flash('error', 'Auto Confirm saat ini baru mendukung friend request.')
+    if (
+      payload.type === 'auto_confirm' &&
+      payload.config?.confirmType === 'group' &&
+      !payload.config?.url
+    ) {
+      session.flash('error', 'Auto Confirm group membutuhkan URL target group atau halaman member requests.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_create' && !payload.config?.createType) {
       session.flash('error', 'Auto Create membutuhkan tipe create.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_create' && payload.config?.createType !== 'group') {
+      session.flash('error', 'Auto Create saat ini baru mendukung mode group. Fanspage dan event masih diparkir.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_create' && !String(payload.name ?? '').trim()) {
+      session.flash('error', 'Auto Create group membutuhkan nama campaign yang akan dipakai sebagai nama group.')
       return response.redirect().back()
     }
 
@@ -1305,12 +1317,24 @@ export default class CampaignsController {
       session.flash('error', 'Auto Confirm membutuhkan tipe confirm.')
       return response.redirect().back()
     }
-    if (payload.type === 'auto_confirm' && payload.config?.confirmType !== 'friend') {
-      session.flash('error', 'Auto Confirm saat ini baru mendukung friend request.')
+    if (
+      payload.type === 'auto_confirm' &&
+      payload.config?.confirmType === 'group' &&
+      !payload.config?.url
+    ) {
+      session.flash('error', 'Auto Confirm group membutuhkan URL target group atau halaman member requests.')
       return response.redirect().back()
     }
     if (payload.type === 'auto_create' && !payload.config?.createType) {
       session.flash('error', 'Auto Create membutuhkan tipe create.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_create' && payload.config?.createType !== 'group') {
+      session.flash('error', 'Auto Create saat ini baru mendukung mode group. Fanspage dan event masih diparkir.')
+      return response.redirect().back()
+    }
+    if (payload.type === 'auto_create' && !String(payload.name ?? '').trim()) {
+      session.flash('error', 'Auto Create group membutuhkan nama campaign yang akan dipakai sebagai nama group.')
       return response.redirect().back()
     }
 

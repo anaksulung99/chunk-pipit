@@ -15,6 +15,7 @@ import {
   BarChart3,
   CalendarDays,
   ContactIcon,
+  HatGlasses,
 } from "@lucide/vue";
 
 type TeamRow = {
@@ -67,6 +68,7 @@ const props = defineProps<{
     proxies: { total: number; byStatus: Tally };
     fingerprints: number;
     facebookProfiles: number;
+    antidetects: number;
     today: { total: number; success: number; failed: number };
   };
   running: { id: string; name: string; type: string; total: number; done: number }[];
@@ -189,6 +191,13 @@ const kpis = [
     sub: "profil",
     icon: Fingerprint,
     color: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    label: "Antidetects",
+    value: props.stats.antidetects,
+    sub: "profil",
+    icon: HatGlasses,
+    color: "text-muted-foreground",
   },
   {
     label: "Aksi Hari Ini",
@@ -449,8 +458,10 @@ const profileLifecycleSummary = computed(() => {
   const profiles = props.fbProfiles ?? [];
   return {
     fresh: profiles.filter((item) => item.lifecycleStatus === "fresh").length,
-    requested: profiles.filter((item) => item.lifecycleStatus === "friend_requested").length,
-    connected: profiles.filter((item) => item.lifecycleStatus === "friend_connected").length,
+    requested: profiles.filter((item) => item.lifecycleStatus === "friend_requested")
+      .length,
+    connected: profiles.filter((item) => item.lifecycleStatus === "friend_connected")
+      .length,
     invited: profiles.filter((item) => item.lifecycleStatus === "invited").length,
     failed: profiles.filter((item) => item.lifecycleStatus === "failed").length,
   };
@@ -459,8 +470,10 @@ const profileLifecycleSummary = computed(() => {
 const profileRelationshipSummary = computed(() => {
   const profiles = props.fbProfiles ?? [];
   return {
-    outgoing: profiles.filter((item) => item.relationshipStatus === "outgoing_request").length,
-    incoming: profiles.filter((item) => item.relationshipStatus === "incoming_request").length,
+    outgoing: profiles.filter((item) => item.relationshipStatus === "outgoing_request")
+      .length,
+    incoming: profiles.filter((item) => item.relationshipStatus === "incoming_request")
+      .length,
     friend: profiles.filter((item) => item.relationshipStatus === "friend").length,
   };
 });
@@ -1130,23 +1143,37 @@ const profileRelationshipSummary = computed(() => {
             <div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-5">
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Fresh</div>
-                <div class="mt-1 text-lg font-semibold">{{ profileLifecycleSummary.fresh }}</div>
+                <div class="mt-1 text-lg font-semibold">
+                  {{ profileLifecycleSummary.fresh }}
+                </div>
               </div>
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Requested</div>
-                <div class="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">{{ profileLifecycleSummary.requested }}</div>
+                <div class="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">
+                  {{ profileLifecycleSummary.requested }}
+                </div>
               </div>
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Connected</div>
-                <div class="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{{ profileLifecycleSummary.connected }}</div>
+                <div
+                  class="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400"
+                >
+                  {{ profileLifecycleSummary.connected }}
+                </div>
               </div>
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Invited</div>
-                <div class="mt-1 text-lg font-semibold text-violet-600 dark:text-violet-400">{{ profileLifecycleSummary.invited }}</div>
+                <div
+                  class="mt-1 text-lg font-semibold text-violet-600 dark:text-violet-400"
+                >
+                  {{ profileLifecycleSummary.invited }}
+                </div>
               </div>
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Failed</div>
-                <div class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">{{ profileLifecycleSummary.failed }}</div>
+                <div class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
+                  {{ profileLifecycleSummary.failed }}
+                </div>
               </div>
             </div>
           </div>
@@ -1160,15 +1187,25 @@ const profileRelationshipSummary = computed(() => {
             <div class="mt-3 grid grid-cols-3 gap-3">
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Outgoing</div>
-                <div class="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">{{ profileRelationshipSummary.outgoing }}</div>
+                <div class="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">
+                  {{ profileRelationshipSummary.outgoing }}
+                </div>
               </div>
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Incoming</div>
-                <div class="mt-1 text-lg font-semibold text-amber-600 dark:text-amber-400">{{ profileRelationshipSummary.incoming }}</div>
+                <div
+                  class="mt-1 text-lg font-semibold text-amber-600 dark:text-amber-400"
+                >
+                  {{ profileRelationshipSummary.incoming }}
+                </div>
               </div>
               <div class="rounded-md border border-border bg-card px-3 py-2">
                 <div class="text-[11px] text-muted-foreground">Friend</div>
-                <div class="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{{ profileRelationshipSummary.friend }}</div>
+                <div
+                  class="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400"
+                >
+                  {{ profileRelationshipSummary.friend }}
+                </div>
               </div>
             </div>
           </div>

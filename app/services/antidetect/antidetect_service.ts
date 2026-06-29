@@ -166,7 +166,9 @@ export class AntidetectService {
 
     return fs
       .readdirSync(browsersDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && prefixes.some((prefix) => entry.name.startsWith(prefix)))
+      .filter(
+        (entry) => entry.isDirectory() && prefixes.some((prefix) => entry.name.startsWith(prefix))
+      )
       .map((entry) => path.join(browsersDir, entry.name, ...executableParts))
   }
 
@@ -402,5 +404,6 @@ export class AntidetectService {
   async closeAll(): Promise<void> {
     const closePromises = Array.from(this.session.values()).map((s) => s.close())
     await Promise.all(closePromises)
+    this.session.clear()
   }
 }

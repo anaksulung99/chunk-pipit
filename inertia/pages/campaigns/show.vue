@@ -365,9 +365,23 @@ const confirmTypeLabel = computed(() => {
   if (raw === "group") return "Group";
   return null;
 });
+const createTypeLabel = computed(() => {
+  if (props.campaign.type !== "auto_create") return null;
+  const raw = configString("createType");
+  if (raw === "group") return "Group";
+  if (raw === "fanspage") return "Fanspage";
+  if (raw === "event") return "Event";
+  return null;
+});
 const campaignUrlLabel = computed(() => {
   if (props.campaign.type === "auto_delete") {
     return deleteTypeLabel.value === "Comment" ? "Permalink Comment" : "Permalink Post";
+  }
+  if (props.campaign.type === "auto_confirm" && confirmTypeLabel.value === "Group") {
+    return "URL Target Group";
+  }
+  if (props.campaign.type === "auto_create") {
+    return "URL Group Hasil Create";
   }
   if (props.campaign.type === "auto_invite") return "URL Target Invite";
   if (props.campaign.type === "auto_like") return "URL Target Like";
@@ -391,16 +405,33 @@ const autoDeleteHint = computed(() => {
 });
 const autoConfirmSummary = computed(() => {
   if (props.campaign.type !== "auto_confirm") return null;
-  return "Foundation saat ini fokus ke halaman friend requests milik akun terpilih. Worker akan mencoba confirm request yang memang terlihat dan siap diproses pada akun tersebut.";
+  return confirmTypeLabel.value === "Group"
+    ? "Foundation fase awal ini fokus ke approval member request pada 1 group target per campaign. Worker akan membuka URL group atau halaman member requests yang kamu simpan, lalu mencoba approve request yang memang terlihat."
+    : "Foundation saat ini fokus ke halaman friend requests milik akun terpilih. Worker akan mencoba confirm request yang memang terlihat dan siap diproses pada akun tersebut.";
 });
 const autoConfirmHint = computed(() => {
   if (props.campaign.type !== "auto_confirm") return null;
   return confirmTypeLabel.value === "Friend Request"
-    ? "Mode aktif sekarang hanya friend request. Jalur confirm tipe group masih diparkir agar hasil tetap jujur."
-    : "Mode ini belum diaktifkan penuh pada foundation sekarang.";
+    ? "Mode friend bekerja dari halaman friend requests akun terpilih."
+    : "Untuk mode group, URL halaman member requests lebih ideal daripada URL group umum agar worker lebih cepat menemukan tombol approve.";
 });
 const autoConfirmActionReport = computed(
   () => props.actionReport.find((row) => row.action === "auto_confirm") ?? null
+);
+const autoCreateSummary = computed(() => {
+  if (props.campaign.type !== "auto_create") return null;
+  return createTypeLabel.value === "Group"
+    ? "Foundation fase awal ini fokus membuat 1 group baru per akun eksekutor. Nama campaign dipakai sebagai nama group, deskripsi bersifat opsional, dan worker akan mencoba menutup flow create sampai surface group baru terbuka."
+    : "Mode create selain group masih diparkir agar hasil tetap jujur.";
+});
+const autoCreateHint = computed(() => {
+  if (props.campaign.type !== "auto_create") return null;
+  return createTypeLabel.value === "Group"
+    ? "Privasi group dipilih dari form campaign. Jalur fanspage dan event masih Soon sampai surface live-nya benar-benar siap."
+    : "Mode create ini belum diaktifkan pada foundation sekarang.";
+});
+const autoCreateActionReport = computed(
+  () => props.actionReport.find((row) => row.action === "auto_create") ?? null
 );
 const autoUnfriendSummary = computed(() => {
   if (props.campaign.type !== "auto_unfriend") return null;
@@ -592,6 +623,7 @@ function actionLabel(action: string) {
       auto_invite: "Auto Invite",
       auto_unfriend: "Auto Unfriend",
       auto_confirm: "Auto Confirm",
+      auto_create: "Auto Create",
     }[action] ?? action
   );
 }
@@ -930,6 +962,26 @@ const overviewCards = computed(() => [
             </p>
           </div>
           <div
+            v-if="campaign.type === 'auto_create'"
+            class="col-span-2 sm:col-span-3 rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-3"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium text-foreground">Auto Create Foundation</span>
+              <span
+                class="inline-flex rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
+              >
+                {{ createTypeLabel ?? "Target baru" }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">{{ autoCreateSummary }}</p>
+            <p
+              v-if="autoCreateHint"
+              class="mt-1 text-xs text-violet-700 dark:text-violet-300"
+            >
+              {{ autoCreateHint }}
+            </p>
+          </div>
+          <div
             v-if="campaign.type === 'auto_unfriend'"
             class="col-span-2 sm:col-span-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-3"
           >
@@ -1080,6 +1132,26 @@ const overviewCards = computed(() => [
           <h3 class="text-sm font-medium">Detail Report</h3>
         </div>
         <dl class="grid gap-3 text-sm">
+          <div
+            v-if="campaign.type === 'auto_create'"
+            class="rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-2"
+          >
+            <dt class="text-xs text-violet-700 dark:text-violet-300">Ringkasan Aksi Auto Create</dt>
+            <dd class="mt-1">
+              {{
+                autoCreateActionReport
+                  ? `${autoCreateActionReport.success} success / ${autoCreateActionReport.error} error dari ${autoCreateActionReport.total} aksi utama`
+                  : "Belum ada aksi auto_create yang tercatat."
+              }}
+            </dd>
+            <dd class="text-xs text-muted-foreground">
+              {{
+                autoCreateActionReport?.lastActivityAt
+                  ? `Aktivitas terakhir ${fmt(autoCreateActionReport.lastActivityAt)}`
+                  : "Saat berjalan, card ini membantu membaca cepat outcome create tanpa membuka log detail."
+              }}
+            </dd>
+          </div>
           <div
             v-if="campaign.type === 'auto_unfriend'"
             class="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2"

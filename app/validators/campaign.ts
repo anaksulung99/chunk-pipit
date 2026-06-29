@@ -30,6 +30,7 @@ const commentType = vine.enum(['post', 'comment'] as const)
 const deleteType = vine.enum(['post', 'comment'] as const)
 const confirmType = vine.enum(['friend', 'group'] as const)
 const createType = vine.enum(['group', 'fanspage', 'event'] as const)
+const createGroupPrivacy = vine.enum(['public', 'private'] as const)
 const addFriendType = vine.enum(['group', 'profile', 'any_facebook_url'] as const)
 
 export const createCampaignValidator = vine.create({
@@ -83,6 +84,7 @@ export const createCampaignValidator = vine.create({
       deleteType: deleteType.optional(),
       confirmType: confirmType.optional(),
       createType: createType.optional(),
+      groupPrivacy: createGroupPrivacy.optional(),
       addFriendType: addFriendType.optional(),
     })
     .optional(),
@@ -157,6 +159,7 @@ export const updateCampaignValidator = vine.create({
       deleteType: deleteType.optional(),
       confirmType: confirmType.optional(),
       createType: createType.optional(),
+      groupPrivacy: createGroupPrivacy.optional(),
       addFriendType: addFriendType.optional(),
     })
     .optional(),

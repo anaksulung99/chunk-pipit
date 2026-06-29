@@ -10,6 +10,7 @@ import FacebookProfile from '#models/facebook_profile'
 import Proxy from '#models/proxy'
 import FingerprintProfile from '#models/fingerprint_profile'
 import SessionLog from '#models/session_log'
+import Antidetect from '#models/antidetect'
 import { DateTime } from 'luxon'
 import {
   bulkTeamValidator,
@@ -217,6 +218,7 @@ export default class TeamsController {
       proxyRows,
       fingerprintCount,
       facebookProfileCount,
+      antidetectCount,
       analyticsLogs,
     ] = await Promise.all([
       Campaign.query().where('user_id', team.id).select('status', 'type'),
@@ -225,6 +227,7 @@ export default class TeamsController {
       Proxy.query().where('user_id', team.id).select('status'),
       FingerprintProfile.query().where('user_id', team.id).count('* as total'),
       FacebookProfile.query().where('user_id', team.id).count('* as totalProfiles'),
+      Antidetect.query().where('user_id', team.id).count('* as totalAntidetects'),
       SessionLog.query()
         .whereHas('campaign', (c) => c.where('user_id', team.id))
         .where('created_at', '>=', analyticsStart.toSQL()!)
@@ -423,6 +426,7 @@ export default class TeamsController {
         proxies: { total: proxyRows.length, byStatus: tally(proxyRows.map((p) => p.status)) },
         fingerprints: Number((fingerprintCount[0] as any).$extras.total ?? 0),
         facebookProfiles: Number((facebookProfileCount[0] as any).$extras.totalProfiles ?? 0),
+        antidetects: Number((antidetectCount[0] as any).$extras.totalAntidetects ?? 0),
         today: {
           total: todayActions.length,
           success: todayByStatus.success ?? 0,

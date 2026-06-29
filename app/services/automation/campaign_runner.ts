@@ -23,6 +23,7 @@ import {
   runAutoAddFriend,
   runAutoComment,
   runAutoConfirm,
+  runAutoCreate,
   runAutoDelete,
   runAutoInbox,
   runAutoInvite,
@@ -397,6 +398,119 @@ async function updateProfileLifecycle(
   await profile.save()
 }
 
+function normalizeProfileIdentity(value: string | null | undefined) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+async function syncConfirmedProfilesToPool(
+  userId: string,
+  confirmedProfiles: Array<{
+    profileId: string | null
+    profileUrl: string | null
+    profileName: string | null
+  }>,
+  message: string
+) {
+  const seen = new Set<string>()
+
+  for (const row of confirmedProfiles) {
+    const normalizedProfileId = normalizeProfileIdentity(row.profileId)
+    const normalizedProfileUrl = normalizeProfileIdentity(row.profileUrl)
+    const normalizedProfileName = normalizeProfileIdentity(row.profileName)
+    const identity = `${normalizedProfileId}|${normalizedProfileUrl}|${normalizedProfileName}`
+    if (!normalizedProfileId && !normalizedProfileName) continue
+    if (seen.has(identity)) continue
+    seen.add(identity)
+
+    let profile =
+      (normalizedProfileId
+        ? await FacebookProfile.query()
+            .where('user_id', userId)
+            .where('profile_id', row.profileId!)
+            .first()
+        : null) ??
+      (normalizedProfileUrl
+        ? await FacebookProfile.query()
+            .where('user_id', userId)
+            .where('profile_url', row.profileUrl!)
+            .first()
+        : null) ??
+      (normalizedProfileName
+        ? await FacebookProfile.query()
+            .where('user_id', userId)
+            .whereILike('profile_name', row.profileName!)
+            .first()
+        : null)
+
+    if (!profile && normalizedProfileId) {
+      profile = await FacebookProfile.create({
+        userId,
+        profileId: row.profileId!,
+        profileName: row.profileName ?? null,
+        profileUrl: row.profileUrl ?? null,
+        sourceType: 'friend',
+        sourceUrl: row.profileUrl ?? null,
+        lifecycleStatus: 'friend_connected',
+        relationshipStatus: 'friend',
+        lastAction: 'auto_confirm',
+        lastActionStatus: 'success',
+        lastActionMessage: message,
+        lastActionAt: DateTime.now(),
+      })
+      continue
+    }
+
+    if (!profile) continue
+
+    profile.merge({
+      ...(row.profileName && !profile.profileName ? { profileName: row.profileName } : {}),
+      ...(row.profileUrl && !profile.profileUrl ? { profileUrl: row.profileUrl } : {}),
+      ...(row.profileUrl && !profile.sourceUrl ? { sourceUrl: row.profileUrl } : {}),
+      sourceType: profile.sourceType || 'friend',
+      lifecycleStatus: 'friend_connected',
+      relationshipStatus: 'friend',
+      lastAction: 'auto_confirm',
+      lastActionStatus: 'success',
+      lastActionMessage: message,
+      lastActionAt: DateTime.now(),
+    })
+    await profile.save()
+  }
+}
+
+async function promoteOutstandingOutgoingRequestsAfterConfirm(
+  userId: string,
+  processedCount: number,
+  message: string
+) {
+  if (processedCount <= 0) return 0
+
+  const candidates = await FacebookProfile.query()
+    .where('user_id', userId)
+    .where('relationship_status', 'outgoing_request')
+    .where('last_action', 'auto_add_friend')
+    .where('last_action_status', 'success')
+    .orderBy('last_action_at', 'desc')
+    .limit(processedCount)
+
+  for (const profile of candidates) {
+    profile.merge({
+      lifecycleStatus: 'friend_connected',
+      relationshipStatus: 'friend',
+      lastAction: 'auto_confirm',
+      lastActionStatus: 'success',
+      lastActionMessage: message,
+      lastActionAt: DateTime.now(),
+    })
+    await profile.save()
+  }
+
+  return candidates.length
+}
+
 /** Count today's successful joins for an account (enforces daily-join-limit). */
 async function countTodayJoins(accountId: string): Promise<number> {
   const start = DateTime.now().startOf('day').toSQL()!
@@ -473,20 +587,33 @@ export async function runCampaign(campaignId: string): Promise<void> {
     .sort((left, right) => left.createdAt.toMillis() - right.createdAt.toMillis())
     .slice(0, Math.max(1, campaign.maxAccounts))
   const runtimeStartedAt = campaign.startedAt ?? DateTime.now()
+  const initialRuntimeTargetType =
+    campaign.type === 'scrape_group' || campaign.type === 'scrape_profile'
+      ? 'hasil_scrape'
+      : campaign.type === 'auto_invite'
+        ? 'profile'
+        : campaign.type === 'auto_confirm' || campaign.type === 'auto_create'
+          ? 'account'
+        : 'group'
+  const initialRuntimeTotalTargets =
+    campaign.type === 'scrape_group' || campaign.type === 'scrape_profile'
+      ? null
+      : campaign.type === 'auto_invite'
+        ? campaign.profiles.length
+        : campaign.type === 'auto_confirm' || campaign.type === 'auto_create'
+          ? accounts.length
+        : campaign.groups.length
   const runtime: RuntimeSnapshot = {
     runId: `${campaign.id}:${runtimeStartedAt.toMillis()}`,
     status: campaign.status,
     stage: campaign.type,
-    targetType:
-      campaign.type === 'scrape_group' || campaign.type === 'scrape_profile' ? 'hasil_scrape' : 'group',
-    totalTargets:
-      campaign.type === 'scrape_group' || campaign.type === 'scrape_profile' ? null : campaign.groups.length,
+    targetType: initialRuntimeTargetType,
+    totalTargets: initialRuntimeTotalTargets,
     processedTargets: 0,
     successCount: 0,
     failedCount: 0,
     skippedCount: 0,
-    pendingCount:
-      campaign.type === 'scrape_group' || campaign.type === 'scrape_profile' ? 0 : campaign.groups.length,
+    pendingCount: initialRuntimeTotalTargets ?? 0,
     runningCount: 0,
     discoveredCount: 0,
     persistedCount: 0,
@@ -1716,12 +1843,29 @@ export async function runCampaign(campaignId: string): Promise<void> {
                 result.message,
                 campaignAccount.account?.id
               )
+              const alreadyFriendDetected = /target sudah berteman/i.test(result.message)
               await updateProfileLifecycle(targetProfile.facebookProfileId, {
                 lifecycleStatus:
-                  result.status === 'done' ? 'friend_requested' : result.status === 'failed' ? 'failed' : undefined,
-                relationshipStatus: result.status === 'done' ? 'outgoing_request' : undefined,
+                  result.status === 'done'
+                    ? 'friend_requested'
+                    : alreadyFriendDetected
+                      ? 'friend_connected'
+                      : result.status === 'failed'
+                        ? 'failed'
+                        : undefined,
+                relationshipStatus:
+                  result.status === 'done'
+                    ? 'outgoing_request'
+                    : alreadyFriendDetected
+                      ? 'friend'
+                      : undefined,
                 lastAction: 'auto_add_friend',
-                lastActionStatus: result.status === 'done' ? 'success' : result.status,
+                lastActionStatus:
+                  result.status === 'done'
+                    ? 'success'
+                    : alreadyFriendDetected
+                      ? 'success'
+                      : result.status,
                 lastActionMessage: result.message,
               })
 
@@ -2413,9 +2557,17 @@ export async function runCampaign(campaignId: string): Promise<void> {
         const confirmOutcome: {
           status: 'done' | 'skipped' | 'failed'
           message: string
+          processedCount: number
+          confirmedProfiles: Array<{
+            profileId: string | null
+            profileUrl: string | null
+            profileName: string | null
+          }>
         } = {
           status: 'failed',
           message: 'Auto confirm selesai.',
+          processedCount: 0,
+          confirmedProfiles: [],
         }
 
         await updateRuntime(
@@ -2438,6 +2590,8 @@ export async function runCampaign(campaignId: string): Promise<void> {
           const result = await runAutoConfirm(page, config)
           confirmOutcome.status = result.status
           confirmOutcome.message = result.message
+          confirmOutcome.processedCount = result.processedCount
+          confirmOutcome.confirmedProfiles = result.confirmedProfiles
           await log(
             campaign.id,
             'auto_confirm',
@@ -2445,6 +2599,28 @@ export async function runCampaign(campaignId: string): Promise<void> {
             result.message,
             campaignAccount.account?.id
           )
+          if ((config.confirmType ?? 'friend') === 'friend' && result.confirmedProfiles.length) {
+            await syncConfirmedProfilesToPool(campaign.userId, result.confirmedProfiles, result.message)
+          } else if (
+            (config.confirmType ?? 'friend') === 'friend' &&
+            result.status === 'done' &&
+            result.processedCount > 0
+          ) {
+            const promotedCount = await promoteOutstandingOutgoingRequestsAfterConfirm(
+              campaign.userId,
+              result.processedCount,
+              result.message
+            )
+
+            if (promotedCount > 0) {
+              await log(
+                campaign.id,
+                'auto_confirm',
+                'checkpoint',
+                `Sinkronisasi fallback profile pool: ${promotedCount} outgoing request dipromosikan menjadi friend_connected/friend.`
+              )
+            }
+          }
         })
 
         const resultMessage =
@@ -2636,6 +2812,99 @@ export async function runCampaign(campaignId: string): Promise<void> {
           )
         }
       )
+    } else if (campaign.type === 'auto_create') {
+      if (!accounts.length) throw new Error('Campaign auto create membutuhkan minimal 1 akun.')
+
+      const config = (campaign.config as any) ?? {}
+      const assignments = accounts.map((account) => ({ account }))
+      let batchCursor = 0
+      let completedBatches = 0
+      let activeBatches = 0
+
+      await updateRuntime(
+        {
+          targetType: 'account',
+          totalTargets: assignments.length,
+          processedTargets: 0,
+          successCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          totalBatches: assignments.length,
+          currentAction: 'auto_create',
+          currentLabel: `Menyiapkan ${assignments.length} akun untuk auto create.`,
+        },
+        {
+          completedBatches: 0,
+          activeBatches: 0,
+        }
+      )
+
+      await runPool(assignments, campaign.maxConcurrency, async ({ account: campaignAccount }) => {
+        batchCursor++
+        const batchNumber = batchCursor
+        activeBatches++
+        let createOutcome: { status: 'done' | 'skipped' | 'failed'; message: string } = {
+          status: 'failed',
+          message: 'Auto create selesai.',
+        }
+
+        await updateRuntime(
+          {
+            currentBatch: batchNumber,
+            currentAccountId: campaignAccount.account?.id ?? null,
+            currentAction: 'auto_create',
+            currentLabel: `Batch akun ${batchNumber}/${assignments.length}: ${campaignAccount.account?.label ?? 'Akun'}.`,
+            runningCount: activeBatches,
+          },
+          {
+            batchLabel: `Batch akun ${batchNumber}/${assignments.length}`,
+            currentAccountLabel: campaignAccount.account?.label ?? null,
+            completedBatches,
+            activeBatches,
+          }
+        )
+
+        const attempt = await withAccount(campaignAccount, async (page) => {
+          const result = await runAutoCreate(page, {
+            createType: config.createType,
+            caption: config.caption,
+            groupPrivacy: config.groupPrivacy,
+            name: campaign.name,
+          })
+          createOutcome = result
+          await log(
+            campaign.id,
+            'auto_create',
+            result.status === 'done' ? 'success' : result.status,
+            result.message,
+            campaignAccount.account?.id
+          )
+        })
+
+        const resultMessage = attempt.status !== 'done' ? attempt.reason : createOutcome.message
+        const wasSuccessful = attempt.status === 'done' && createOutcome.status === 'done'
+        const wasSkipped = attempt.status === 'done' && createOutcome.status === 'skipped'
+        const wasFailed = !wasSuccessful && !wasSkipped
+
+        await updateRuntime(
+          {
+            processedTargets: runtime.processedTargets + 1,
+            successCount: runtime.successCount + (wasSuccessful ? 1 : 0),
+            failedCount: runtime.failedCount + (wasFailed ? 1 : 0),
+            skippedCount: runtime.skippedCount + (wasSkipped ? 1 : 0),
+            currentAction: 'auto_create',
+            currentLabel: resultMessage,
+            runningCount: Math.max(0, activeBatches - 1),
+          },
+          {
+            completedBatches: completedBatches + 1,
+            activeBatches: Math.max(0, activeBatches - 1),
+          }
+        )
+
+        activeBatches = Math.max(0, activeBatches - 1)
+        completedBatches++
+      })
     } else {
       const config = (campaign.config as any) ?? {}
       const groupTargets = campaign.groups.map((campaignGroup) => ({
